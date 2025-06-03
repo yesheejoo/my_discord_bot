@@ -291,29 +291,40 @@ async def 슬롯(ctx):
     slot_jackpot += bet
     slot_attempts[uid] = slot_attempts.get(uid, 0) + 1
 
-    # 슬롯 결과 생성
-    symbols = ["☀️"] * 10 + ["🌙"] * 20 + ["⭐"] * 20 + ["🍀"] * 15 + ["💣"] * 15 + ["🎲"] * 920
-    result = [random.choice(symbols) for _ in range(5)]
+    # 잭팟 확률 기반 슬롯 결과 생성
+    jackpot_emojis = ["☀️", "🌙", "⭐", "🍀", "💣"]
+    chance = random.random()
+
+    if chance < 0.01:  # 1% 해잭팟
+        result = ["☀️"] * 5
+    elif chance < 0.025:  # 1.5% 일반 잭팟
+        symbol = random.choice(["🌙", "⭐", "🍀", "💣"])
+        result = [symbol] * 5
+    else:
+        # 꽝: 무조건 5개 일치하지 않게 구성
+        while True:
+            result = [random.choice(jackpot_emojis) for _ in range(5)]
+            if len(set(result)) > 1:  # 하나라도 다르면 꽝
+                break
+
     most_common = max(set(result), key=result.count)
     match_count = result.count(most_common)
 
-    # 기본 메시지 구성
-    lines = [
-        f"🎰 결과 : {' '.join(result)}"
-    ]
+    # 메시지 구성
+    lines = [f"🎰 결과 : {' '.join(result)}"]
 
-    # 잭팟 당첨
-    if match_count == 5 and most_common in ["☀️", "🌙", "⭐", "🍀", "💣"]:
+    if match_count == 5:
         base_reward = int(slot_jackpot * 0.8)
         bonus_msg = ""
+        is_solar = most_common == "☀️"
 
-        if most_common == "☀️":
+        if is_solar:
             base_reward += 500
             bonus_msg = "• ☀️ **솔라잭팟!** 500포인트 추가 보너스!"
 
         user_points[uid] += base_reward
 
-        # 보너스 분배
+        # 보너스 분배 (20%)
         bonus_pool = slot_jackpot - int(slot_jackpot * 0.8)
         top_investors = sorted(slot_attempts.items(), key=lambda x: x[1], reverse=True)
         recipients = [u for u, _ in top_investors if u != uid][:2]
@@ -334,19 +345,16 @@ async def 슬롯(ctx):
         slot_jackpot = 0
         slot_attempts.clear()
     else:
-        # 꽝 처리
         lines.append("• 💀 꽝! 누적 상금은 계속 쌓입니다...")
         lines.append(f"• 💰 남은 내 포인트 : {user_points[uid]:,}점")
         lines.append(f"• 💸 누적 잭팟 : {slot_jackpot:,}점")
 
-    # Embed 생성
     embed = Embed(
         title="**[슬롯머신 결과]**",
         description="\n".join(lines),
         color=0xf1c40f
     )
 
-    # 포인트 저장
     with open(POINTS_FILE, "w", encoding="utf-8") as f:
         json.dump(user_points, f, indent=2, ensure_ascii=False)
 
