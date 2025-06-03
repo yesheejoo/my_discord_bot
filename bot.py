@@ -86,10 +86,10 @@ async def on_voice_state_update(member, before, after):
                     total_points += minutes * 1.0
             earned = int(total_points)
             user_points[uid] = user_points.get(uid, 0) + earned
-            activity_points[uid] = activity_points.get(uid, 0) + earned
+            activity_xp[uid] = activity_xp.get(uid, 0) + earned
 
             with open(POINTS_FILE, "w", encoding="utf-8") as f:
-                json.dump(user_points, f, indent=2)
+                json.dump(user_points, f, indent=2, ensure_ascii=False)
 
 # ───── 랭킹 출력 ─────
 @bot.command()
@@ -198,11 +198,11 @@ async def 포인트(ctx):
     embed = discord.Embed(
         title=f"{member.display_name} 님의 포인트 & 레벨 정보",
         description=(
-            f"• 🧬 레벨 : {level}레벨\n"
+            f"• 🏃🏻 레벨 : {level}레벨\n"
             f"• 🔼 다음 레벨까지 : {next_level_xp:,} 포인트\n\n"
             f"• 📊 순위 : {rank}위 / {len(sorted_users)}명 중\n"
-            f"• 📦 현재 보유 포인트 : {total_point:,} 포인트\n"
-            f"• 🛠 디스코드 활동 획득 : {activity:,} 포인트\n"
+            f"• 🪙 현재 보유 포인트 : {total_point:,} 포인트\n"
+            f"• 🎧 디스코드 활동 획득 : {activity:,} 포인트\n"
             f"• 🧧 관리자 지급 누적 : {admin:,} 포인트"
         ),
         color=0x55CCFF
@@ -227,31 +227,41 @@ async def 도박(ctx, 배팅: int):
     user_points[uid] -= 배팅
     chance = random.randint(1, 100)
     result_msg = ""
+    gain = 0
 
     if chance <= 65:
-        result_msg = f"{mention} 💀 실패! {배팅:,}점 잃었습니다."
+        result_msg = f"💀 실패! {배팅:,}점 잃었습니다."
         gamble_losses[uid] = gamble_losses.get(uid, 0) + 배팅
     elif chance <= 90:
         gain = 배팅 * 2
-        user_points[uid] += gain
-        gamble_points[uid] = gamble_points.get(uid, 0) + gain
-        result_msg = f"{mention} ✨ 2배 당첨! {gain:,}점 획득!"
+        result_msg = f"✨ 2배 당첨! {gain:,}점 획득!"
     elif chance <= 98:
         gain = 배팅 * 3
-        user_points[uid] += gain
-        gamble_points[uid] = gamble_points.get(uid, 0) + gain
-        result_msg = f"{mention} 🎉 3배 당첨! {gain:,}점 획득!"
+        result_msg = f"🎉 3배 당첨! {gain:,}점 획득!"
     else:
         gain = 배팅 * 10
-        user_points[uid] += gain
-        gamble_points[uid] = gamble_points.get(uid, 0) + gain
-        result_msg = f"{mention} 🌟 10배 전설 당첨! {gain:,}점 획득!!"
+        result_msg = f"🌟 10배 전설 당첨! {gain:,}점 획득!!"
 
-    # 최신 상태 저장
+    user_points[uid] += gain
+    if gain > 0:
+        gamble_points[uid] = gamble_points.get(uid, 0) + gain
+
     with open(POINTS_FILE, "w", encoding="utf-8") as f:
         json.dump(user_points, f, indent=2, ensure_ascii=False)
 
-    await ctx.send(f"{result_msg}\n💰 보유 포인트: {user_points[uid]:,}점")
+    activity = activity_xp.get(uid, 0)
+    admin = admin_xp.get(uid, 0)
+    total_point = user_points.get(uid, 0)
+    sorted_users = sorted(user_points.items(), key=lambda x: x[1], reverse=True)
+    rank = next((i + 1 for i, (u, _) in enumerate(sorted_users) if u == uid), None)
+
+    result_text = (
+        f"{mention}님\n"
+        f"{result_msg}\n"
+        f"💰 보유 포인트: {total_point:,}점"
+    )
+
+    await ctx.send(result_text)
 
 # ───── 슬롯머신 ─────
 slot_jackpot = 0  # 누적 잭팟
@@ -259,19 +269,15 @@ slot_attempts = {}  # 시도 기록
 
 @bot.command()
 async def 슬롯(ctx):
-    
-    # 🔄 포인트 데이터 최신화
+    global slot_jackpot, slot_attempts
     try:
         with open(POINTS_FILE, "r", encoding="utf-8") as f:
             user_points.update(json.load(f))
     except FileNotFoundError:
         pass
-    global slot_jackpot, slot_attempts
+
     uid = str(ctx.author.id)
     bet = 5
-
-    # 디버깅용 로그
-    print(f"[슬롯 호출됨] 유저: {ctx.author.display_name}, UID: {uid}")
 
     if user_points.get(uid, 0) < bet:
         await ctx.send("❌ 포인트가 부족합니다. (5점 필요)")
@@ -281,47 +287,59 @@ async def 슬롯(ctx):
     slot_jackpot += bet
     slot_attempts[uid] = slot_attempts.get(uid, 0) + 1
 
-    symbols = ["☀️"] + ["🌙"] * 3 + ["⭐"] * 3 + ["🍀"] * 2 + ["💣"]
+    # 확률 조정 (총 1000개 중 비율 조정)
+    symbols = ["☀️"] * 10 + ["🌙"] * 20 + ["⭐"] * 20 + ["🍀"] * 15 + ["💣"] * 15 + ["🎲"] * 920
     result = [random.choice(symbols) for _ in range(5)]
     most_common = max(set(result), key=result.count)
     match_count = result.count(most_common)
 
     msg = ""
+    reward = 0
 
-    if most_common == "☀️" and match_count == 5:
-        sorted_attempts = sorted(slot_attempts.items(), key=lambda x: x[1], reverse=True)
-        top_investors = [uid for uid, _ in sorted_attempts[:3]]
-        bonus_pool = int(slot_jackpot * 0.2)
-        jackpot_winner_reward = slot_jackpot - bonus_pool
+    if match_count == 5 and most_common in ["☀️", "🌙", "⭐", "🍀", "💣"]:
+        base_reward = int(slot_jackpot * 0.8)
+        bonus_msg = ""
+        if most_common == "☀️":
+            base_reward += 500
+            bonus_msg = "● ☀️ 솔라잭팟! 500포인트 추가 보너스!\n"
 
-        user_points[uid] = user_points.get(uid, 0) + jackpot_winner_reward
+        user_points[uid] = user_points.get(uid, 0) + base_reward
 
-        share = bonus_pool // max(len(top_investors), 1)
-        bonus_recipients = []
-        for investor_uid in top_investors:
-            user_points[investor_uid] = user_points.get(investor_uid, 0) + share
-            bonus_recipients.append(f"<@{investor_uid}> (+{share:,}점)")
+        bonus_pool = slot_jackpot - int(slot_jackpot * 0.8)
+        top_investors = sorted(slot_attempts.items(), key=lambda x: x[1], reverse=True)
+        recipients = [u for u, _ in top_investors if u != uid][:2]
+        share = bonus_pool // max(len(recipients), 1) if recipients else 0
+        distributed = []
+        for rid in recipients:
+            user_points[rid] = user_points.get(rid, 0) + share
+            distributed.append(f"<@{rid}> (+{share:,}점)")
 
-        msg = f"""🌞 해 5개! <@{uid}>님이 잭팟을 터뜨렸습니다!
-🏆 당첨 보상: {jackpot_winner_reward:,}점
-🎁 보너스 분배(20%): {' / '.join(bonus_recipients)}"""
+        msg = (
+            f"**[슬롯머신 결과]**\n"
+            f"● 🎰 결과 : {' '.join(result)}\n"
+            f"● 🌟 {most_common} 5개! {ctx.author.mention}님이 잭팟을 터뜨렸습니다!\n"
+            f"{bonus_msg}● 🏆 당첨 보상: {base_reward:,}점\n"
+        )
+        if distributed:
+            msg += f"● 🎁 보너스 분배(20%): {' / '.join(distributed)}"
 
         slot_jackpot = 0
         slot_attempts.clear()
     else:
-        msg = "💀 꽝! 누적 상금은 계속 쌓입니다..."
+        msg = (
+            f"**[슬롯머신 결과]**\n"
+            f"● 🎰 결과 : {' '.join(result)}\n"
+            f"● 💀 꽝! 누적 상금은 계속 쌓입니다...\n"
+            f"● 💰 남은 내 포인트 : {user_points[uid]:,}점\n"
+            f"● 💸 누적 잭팟 : {slot_jackpot:,}점"
+        )
+        await ctx.send(msg)
+        return
 
     with open(POINTS_FILE, "w", encoding="utf-8") as f:
-        json.dump(user_points, f, indent=2)
+        json.dump(user_points, f, indent=2, ensure_ascii=False)
 
-    embed = discord.Embed(title="🎰 슬롯머신 결과", color=0xFFA500)
-    embed.add_field(name="🎞 결과", value=" ".join(result), inline=False)
-    embed.add_field(name="📢 메시지", value=msg, inline=False)
-    embed.add_field(name="💰 현재 포인트", value=f"{user_points[uid]:,}점", inline=False)
-    embed.add_field(name="💼 누적 잭팟", value=f"{slot_jackpot:,}점", inline=False)
-
-    print(f"[슬롯 결과] {result} | 유저: {ctx.author.display_name} | 메시지: {msg}")
-    await ctx.send(embed=embed)
+    await ctx.send(msg)
 
 # ───── 보내기 기능 ─────
 @bot.command()
@@ -455,6 +473,34 @@ async def 기록다운(ctx, 월: str):
 
 # 관리자 권한 ID 리스트
 allowed_admin_ids = [518697602774990859, 1335240110358265967]
+
+# 전체 초기화 명령어 (관리자만 사용)
+@bot.command()
+async def 전체초기화(ctx):
+    if ctx.author.id not in allowed_admin_ids:
+        await ctx.send("🚫 이 명령어는 등록된 관리자만 사용할 수 있습니다.")
+        return
+
+    global user_points, activity_xp, admin_xp, gamble_points, gamble_losses, user_levels
+    global checkin_log, point_log, daily_gamble_log, slot_jackpot, slot_attempts
+
+    user_points.clear()
+    activity_xp.clear()
+    admin_xp.clear()
+    gamble_points.clear()
+    gamble_losses.clear()
+    user_levels.clear()
+    checkin_log.clear()
+    point_log.clear()
+    daily_gamble_log.clear()
+    slot_jackpot = 0
+    slot_attempts.clear()
+
+    for file_path in [POINTS_FILE, POINT_LOG_FILE]:
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump({}, f)
+
+    await ctx.send("🔄 모든 유저 데이터가 초기화되었습니다. (포인트, 레벨, 기록 등)")
 
 # 출석 체크 기능
 @bot.command()
