@@ -8,8 +8,8 @@ import io
 import csv
 
 # ───── 기본 설정 ─────
-with open("token.txt", "r") as f:
-    TOKEN = f.read().strip()
+import os
+TOKEN = os.environ.get("BOT_TOKEN")
 
 intents = discord.Intents.default()
 intents.voice_states = True
