@@ -1,15 +1,17 @@
+import os
 import discord
 from discord.ext import commands
 import datetime
 import json
-import os
 import random
 import io
 import csv
 
 # ───── 기본 설정 ─────
-import os
-TOKEN = os.environ.get("BOT_TOKEN")
+TOKEN = os.environ.get("BOT_TOKEN")  # 환경변수에서 토큰 불러오기
+
+if not TOKEN:
+    raise ValueError("❗ BOT_TOKEN 환경변수가 설정되지 않았습니다.")
 
 intents = discord.Intents.default()
 intents.voice_states = True
@@ -161,21 +163,10 @@ async def 평균(ctx):
     await ctx.send(embed=embed)
 
 # ───── 포인트 및 레벨 출력 명령어 ─────
-# 허용된 관리자 닉네임 리스트
+# 관리자 권한 ID 리스트
 allowed_admin_ids = [518697602774990859, 1335240110358265967]
 
-# 관리자만 활동 포인트 부여
-@bot.command()
-async def 활동추가(ctx, member: discord.Member, 점수: int):
-    if ctx.author.id not in allowed_admin_ids:
-        await ctx.send("🚫 이 명령어는 등록된 관리자만 사용할 수 있습니다.")
-        return
-
-    uid = str(member.id)
-    user_points[uid] = user_points.get(uid, 0) + 점수
-    activity_points[uid] = activity_points.get(uid, 0) + 점수
-    await ctx.send(f"✅ {member.display_name}님에게 활동 포인트 {점수}점을 부여했습니다!")
-
+# 지급 랭킹 및 정보 출력
 @bot.command()
 async def 포인트(ctx):
     uid = str(ctx.author.id)
@@ -183,7 +174,7 @@ async def 포인트(ctx):
 
     activity = activity_xp.get(uid, 0)
     admin = admin_xp.get(uid, 0)
-    total_xp = activity + admin
+    total_xp = activity + admin  # 레벨 계산용
     gamble = gamble_points.get(uid, 0)
     loss = gamble_losses.get(uid, 0)
     total_point = user_points.get(uid, 0)
@@ -203,21 +194,19 @@ async def 포인트(ctx):
         return level, next_xp
 
     level, next_level_xp = calculate_level(total_xp)
-
     sorted_users = sorted(user_points.items(), key=lambda x: x[1], reverse=True)
     rank = next((i + 1 for i, (u, _) in enumerate(sorted_users) if u == uid), None)
 
     embed = discord.Embed(
         title=f"{member.display_name} 님의 포인트 & 레벨 정보",
         description=(
-    f"• 🧬 레벨 : {level}레벨\n"
-    f"• 🔼 다음 레벨까지 : {next_level_xp:,} 포인트\n\n"
-    f"• 📊 순위 : {rank}위 / {len(sorted_users)}명 중\n"
-    f"• 📦 총합 : {total_point:,} 포인트\n"
-    f"• 🛠 활동포인트 : {activity:,} 포인트\n"
-    f"• 🎲 도박포인트 : {gamble:,} 포인트\n"
-    f"⤷ 💸 잃은 포인트 : {loss:,} 포인트"
-),
+            f"• 🧬 레벨 : {level}레벨\n"
+            f"• 🔼 다음 레벨까지 : {next_level_xp:,} 포인트\n\n"
+            f"• 📊 순위 : {rank}위 / {len(sorted_users)}명 중\n"
+            f"• 📦 현재 보유 포인트 : {total_point:,} 포인트\n"
+            f"• 🛠 디스코드 활동 획득 : {activity:,} 포인트\n"
+            f"• 🧧 관리자 지급 누적 : {admin:,} 포인트"
+        ),
         color=0x55CCFF
     )
     await ctx.send(embed=embed)
