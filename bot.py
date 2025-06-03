@@ -1,11 +1,13 @@
 import os
+import io
+import json
+import csv
+import random
+import datetime
+
 import discord
 from discord.ext import commands
-import datetime
-import json
-import random
-import io
-import csv
+from discord import Embed
 
 # ───── 기본 설정 ─────
 TOKEN = os.environ.get("BOT_TOKEN")  # 환경변수에서 토큰 불러오기
