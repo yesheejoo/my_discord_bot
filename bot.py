@@ -175,8 +175,6 @@ async def 포인트(ctx):
     activity = activity_xp.get(uid, 0)
     admin = admin_xp.get(uid, 0)
     total_xp = activity + admin  # 레벨 계산용
-    gamble = gamble_points.get(uid, 0)
-    loss = gamble_losses.get(uid, 0)
     total_point = user_points.get(uid, 0)
 
     def calculate_level(xp):
@@ -248,6 +246,10 @@ async def 도박(ctx, 배팅: int):
         user_points[uid] += gain
         gamble_points[uid] = gamble_points.get(uid, 0) + gain
         result_msg = f"{mention} 🌟 10배 전설 당첨! {gain:,}점 획득!!"
+
+    # 최신 상태 저장
+    with open(POINTS_FILE, "w", encoding="utf-8") as f:
+        json.dump(user_points, f, indent=2, ensure_ascii=False)
 
     await ctx.send(f"{result_msg}\n💰 보유 포인트: {user_points[uid]:,}점")
 
