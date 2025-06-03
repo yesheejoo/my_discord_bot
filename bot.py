@@ -270,6 +270,7 @@ slot_attempts = {}  # 시도 기록
 @bot.command()
 async def 슬롯(ctx):
     global slot_jackpot, slot_attempts
+
     try:
         with open(POINTS_FILE, "r", encoding="utf-8") as f:
             user_points.update(json.load(f))
@@ -283,63 +284,70 @@ async def 슬롯(ctx):
         await ctx.send("❌ 포인트가 부족합니다. (5점 필요)")
         return
 
+    # 포인트 차감 및 잭팟 증가
     user_points[uid] -= bet
     slot_jackpot += bet
     slot_attempts[uid] = slot_attempts.get(uid, 0) + 1
 
-    # 확률 조정 (총 1000개 중 비율 조정)
+    # 슬롯 결과 생성
     symbols = ["☀️"] * 10 + ["🌙"] * 20 + ["⭐"] * 20 + ["🍀"] * 15 + ["💣"] * 15 + ["🎲"] * 920
     result = [random.choice(symbols) for _ in range(5)]
     most_common = max(set(result), key=result.count)
     match_count = result.count(most_common)
 
-    msg = ""
-    reward = 0
+    # Embed 생성
+    embed = Embed(
+        title="**[슬롯머신 결과]**",
+        description=f"🎰 결과 : {' '.join(result)}",
+        color=0xf1c40f
+    )
 
+    # 잭팟 당첨 처리
     if match_count == 5 and most_common in ["☀️", "🌙", "⭐", "🍀", "💣"]:
         base_reward = int(slot_jackpot * 0.8)
         bonus_msg = ""
+
         if most_common == "☀️":
             base_reward += 500
-            bonus_msg = "● ☀️ 솔라잭팟! 500포인트 추가 보너스!\n"
+            bonus_msg = "☀️ **솔라잭팟!** 500포인트 추가 보너스!\n"
 
         user_points[uid] = user_points.get(uid, 0) + base_reward
 
+        # 보너스 분배
         bonus_pool = slot_jackpot - int(slot_jackpot * 0.8)
         top_investors = sorted(slot_attempts.items(), key=lambda x: x[1], reverse=True)
         recipients = [u for u, _ in top_investors if u != uid][:2]
         share = bonus_pool // max(len(recipients), 1) if recipients else 0
         distributed = []
+
         for rid in recipients:
             user_points[rid] = user_points.get(rid, 0) + share
             distributed.append(f"<@{rid}> (+{share:,}점)")
 
-        msg = (
-            f"**[슬롯머신 결과]**\n"
-            f"● 🎰 결과 : {' '.join(result)}\n"
-            f"● 🌟 {most_common} 5개! {ctx.author.mention}님이 잭팟을 터뜨렸습니다!\n"
-            f"{bonus_msg}● 🏆 당첨 보상: {base_reward:,}점\n"
-        )
+        embed.add_field(name="🌟 잭팟!", value=f"{ctx.author.mention}님이 {most_common} 5개를 맞췄습니다!", inline=False)
+
+        if bonus_msg:
+            embed.add_field(name="🎁 보너스", value=bonus_msg, inline=False)
+
+        embed.add_field(name="🏆 당첨 보상", value=f"{base_reward:,}점", inline=True)
+
         if distributed:
-            msg += f"● 🎁 보너스 분배(20%): {' / '.join(distributed)}"
+            embed.add_field(name="🎉 보너스 분배 (20%)", value=" / ".join(distributed), inline=False)
 
         slot_jackpot = 0
         slot_attempts.clear()
-    else:
-        msg = (
-            f"**[슬롯머신 결과]**\n"
-            f"● 🎰 결과 : {' '.join(result)}\n"
-            f"● 💀 꽝! 누적 상금은 계속 쌓입니다...\n"
-            f"● 💰 남은 내 포인트 : {user_points[uid]:,}점\n"
-            f"● 💸 누적 잭팟 : {slot_jackpot:,}점"
-        )
-        await ctx.send(msg)
-        return
 
+    else:
+        # 꽝 처리
+        embed.add_field(name="💀 결과", value="꽝! 누적 상금은 계속 쌓입니다...", inline=False)
+        embed.add_field(name="💰 남은 내 포인트", value=f"{user_points[uid]:,}점", inline=True)
+        embed.add_field(name="💸 누적 잭팟", value=f"{slot_jackpot:,}점", inline=True)
+
+    # 파일 저장
     with open(POINTS_FILE, "w", encoding="utf-8") as f:
         json.dump(user_points, f, indent=2, ensure_ascii=False)
 
-    await ctx.send(msg)
+    await ctx.send(embed=embed)
 
 # ───── 보내기 기능 ─────
 @bot.command()
