@@ -286,7 +286,7 @@ async def 슬롯(ctx):
         await ctx.send("❌ 포인트가 부족합니다. (5점 필요)")
         return
 
-    # 포인트 차감 및 잭팟 증가
+    # 포인트 차감 및 잭팟 누적
     user_points[uid] -= bet
     slot_jackpot += bet
     slot_attempts[uid] = slot_attempts.get(uid, 0) + 1
@@ -297,23 +297,21 @@ async def 슬롯(ctx):
     most_common = max(set(result), key=result.count)
     match_count = result.count(most_common)
 
-    # Embed 생성
-    embed = Embed(
-        title="**[슬롯머신 결과]**",
-        description=f"🎰 결과 : {' '.join(result)}",
-        color=0xf1c40f
-    )
+    # 기본 메시지 구성
+    lines = [
+        f"🎰 결과 : {' '.join(result)}"
+    ]
 
-    # 잭팟 당첨 처리
+    # 잭팟 당첨
     if match_count == 5 and most_common in ["☀️", "🌙", "⭐", "🍀", "💣"]:
         base_reward = int(slot_jackpot * 0.8)
         bonus_msg = ""
 
         if most_common == "☀️":
             base_reward += 500
-            bonus_msg = "☀️ **솔라잭팟!** 500포인트 추가 보너스!\n"
+            bonus_msg = "• ☀️ **솔라잭팟!** 500포인트 추가 보너스!"
 
-        user_points[uid] = user_points.get(uid, 0) + base_reward
+        user_points[uid] += base_reward
 
         # 보너스 분배
         bonus_pool = slot_jackpot - int(slot_jackpot * 0.8)
@@ -323,29 +321,32 @@ async def 슬롯(ctx):
         distributed = []
 
         for rid in recipients:
-            user_points[rid] = user_points.get(rid, 0) + share
+            user_points[rid] += share
             distributed.append(f"<@{rid}> (+{share:,}점)")
 
-        embed.add_field(name="🌟 잭팟!", value=f"{ctx.author.mention}님이 {most_common} 5개를 맞췄습니다!", inline=False)
-
+        lines.append(f"• 🌟 {most_common} 5개! {ctx.author.mention}님이 잭팟을 터뜨렸습니다!")
         if bonus_msg:
-            embed.add_field(name="🎁 보너스", value=bonus_msg, inline=False)
-
-        embed.add_field(name="🏆 당첨 보상", value=f"{base_reward:,}점", inline=True)
-
+            lines.append(bonus_msg)
+        lines.append(f"• 🏆 당첨 보상 : {base_reward:,}점")
         if distributed:
-            embed.add_field(name="🎉 보너스 분배 (20%)", value=" / ".join(distributed), inline=False)
+            lines.append(f"• 🎁 보너스 분배 (20%) : {' / '.join(distributed)}")
 
         slot_jackpot = 0
         slot_attempts.clear()
-
     else:
         # 꽝 처리
-        embed.add_field(name="💀 결과", value="꽝! 누적 상금은 계속 쌓입니다...", inline=False)
-        embed.add_field(name="💰 남은 내 포인트", value=f"{user_points[uid]:,}점", inline=True)
-        embed.add_field(name="💸 누적 잭팟", value=f"{slot_jackpot:,}점", inline=True)
+        lines.append("• 💀 꽝! 누적 상금은 계속 쌓입니다...")
+        lines.append(f"• 💰 남은 내 포인트 : {user_points[uid]:,}점")
+        lines.append(f"• 💸 누적 잭팟 : {slot_jackpot:,}점")
 
-    # 파일 저장
+    # Embed 생성
+    embed = Embed(
+        title="**[슬롯머신 결과]**",
+        description="\n".join(lines),
+        color=0xf1c40f
+    )
+
+    # 포인트 저장
     with open(POINTS_FILE, "w", encoding="utf-8") as f:
         json.dump(user_points, f, indent=2, ensure_ascii=False)
 
