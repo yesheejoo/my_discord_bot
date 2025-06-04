@@ -787,7 +787,7 @@ async def 은행(ctx, *args):
 @bot.command()
 async def 은행도움말(ctx):
     embed = discord.Embed(
-        title="🏦 [PERSO 은행 시스템 & 범죄 설명서]",
+        title="🏦 [솔라 은행 시스템 & 범죄 설명서]",
         description=(
             "**💼 은행이란?**\n"
             "• 당신의 포인트를 안전하게 보관하는 금고입니다.\n"
