@@ -601,7 +601,7 @@ async def 지급(ctx, member: discord.Member, 점수: int):
     with open(os.path.join(BASE_DIR, "admin_point_log.txt"), "a", encoding="utf-8") as f:
         f.write(f"{ctx.author.display_name} → {member.display_name}: {점수}점\n")
 
-    await ctx.send(f"✅ {member.display_name}님에게 지급 경험치 {점수}점을 부여했습니다!")
+    await ctx.send(f"✅ {member.display_name}님에게 {점수}포인트를 지급했습니다!")
 
 # ───── 도움말 ─────
 @bot.command()
@@ -662,7 +662,7 @@ async def 범죄(ctx, 유형: str = None, 대상: discord.Member = None):
         else:
             fail_msgs = [
                 "지나가던 인기가 침만 뱉고 갔습니다... 😢",
-                "\"포인트 없어!\" 라는 말만 들었습니다... 💨",
+                "창대곤듀가 \"포인트 없어!\" 라고 말했습니다... 💨",
                 "YESJ어르신이 지갑을 꺼내는 척만 했습니다... 🤥",
                 "길에서 일규박에게 무시당했습니다. 현실입니다... 🧍",
             ]
@@ -671,11 +671,19 @@ async def 범죄(ctx, 유형: str = None, 대상: discord.Member = None):
     elif 유형 == "뺏기" and 대상:
         target_id = str(대상.id)
         target_wallet = user_points.get(target_id, 0)
-        if random.random() < 0.3 and target_wallet >= 500:
-            stolen = random.randint(500, min(5000, target_wallet))
-            user_points[uid] += stolen
-            user_points[target_id] -= stolen
-            msg = f"🎯 {ctx.author.display_name}님이 {대상.display_name}에게서 {stolen}포인트를 훔쳤습니다!"
+
+        # 30% 확률로 성공, 성공 시 총액의 10~30%를 탈취
+        if random.random() < 0.3 and target_wallet > 0:
+            # 대상의 지갑에서 10~30% 비율로 랜덤 탈취
+            percentage = random.uniform(0.1, 0.3)
+            stolen = int(target_wallet * percentage)
+            # stolen이 최소 1이 되도록 보정
+            if stolen < 1:
+                stolen = 1
+
+            user_points[uid] = user_points.get(uid, 0) + stolen
+            user_points[target_id] = max(target_wallet - stolen, 0)
+            msg = f"🎯 {ctx.author.display_name}님이 {대상.display_name}의 지갑에서 {stolen}포인트를 훔쳤습니다!"
         else:
             user_points[uid] = max(user_points.get(uid, 0) - 1000, 0)
             msg = "💥 뺏기 실패! 1,000포인트를 잃었습니다."
@@ -775,7 +783,7 @@ async def 은행도움말(ctx):
             "**🚨 범죄로부터 보호하세요!**\n"
             "다른 유저는 `!범죄` 명령어로 당신의 **지갑 포인트**를 훔칠 수 있어요!\n"
             "• `!범죄 구걸` → 85% 확률로 10~30포인트 획득\n"
-            "• `!범죄 뺏기 @유저` → 30% 확률로 500~5,000포인트 탈취\n"
+            "• `!범죄 뺏기 @유저` → 30% 확률로 대상 지갑 총액의 10~30% 탈취\n"
             "• `!범죄 강탈 @유저` → 5% 확률로 지갑 전체 탈취\n"
             "• `!범죄 은행털기` → 전체 은행의 절반을 훔치는 도전 (1%)\n\n"
             "**✅ 안전한 전략**\n"
