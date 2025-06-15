@@ -68,6 +68,24 @@ def save_talent_store(store):
     with open(TALENT_STORE_FILE, 'w', encoding='utf-8') as f:
         json.dump(store, f, indent=2, ensure_ascii=False)
 
+# ───── 파서 안정화 ─────
+def extract_name_and_price(args):
+    try:
+        match = re.search(r"\((.*?)\)", args)
+        if not match:
+            return None, None
+        name = match.group(1).strip()
+
+        after_bracket = args[match.end():].strip()
+        price_match = re.search(r"(\d+)", after_bracket)
+        if not price_match:
+            return name, None
+        price = int(price_match.group(1))
+        return name, price
+    except Exception as e:
+        print(f"파싱 오류 발생: {e}")
+        return None, None
+
 # ───── 레벨 시스템 ─────
 def xp_for_next(level):
     return 100 + level * 20
@@ -481,32 +499,13 @@ async def 보내기(ctx, member: discord.Member, 금액: int):
     write_data(data)
     await ctx.send(f"📤 {ctx.author.display_name}님이 {member.display_name}님에게 {금액:,}포인트를 보냈습니다!")
 
-# ───── 상품명 파싱 유틸 (안정화 버전) ─────
-def extract_name_and_price(args):
-    try:
-        match = re.search(r"\((.*?)\)", args)
-        if not match:
-            return None, None
-        name = match.group(1).strip()
-
-        after_bracket = args[match.end():].strip()
-        price_match = re.search(r"(\d+)", after_bracket)
-        if not price_match:
-            return name, None
-        price = int(price_match.group(1))
-        return name, price
-    except Exception as e:
-        print(f"파싱 오류: {e}")
-        return None, None
-
-# ───── 재능상점 통합 명령어 ─────
+# ───── 재능상점 메인 명령어 ─────
 @bot.command()
 async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=None):
     user_id = str(ctx.author.id)
     store = load_talent_store()
     data = read_data()
 
-    # 상품 등록
     if action == "등록":
         if user_id not in store:
             store[user_id] = {"items": []}
@@ -522,7 +521,6 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
         save_talent_store(store)
         await ctx.send(f"✅ 상품 '{name}'이(가) 등록되었습니다. 가격: {price}코인")
 
-    # 상품 관리 (조회/삭제)
     elif action == "관리":
         if user_id not in store or not store[user_id]["items"]:
             return await ctx.send("📦 등록된 상품이 없습니다.")
@@ -545,7 +543,6 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
         lines = [f"• {it['name']} — {it['price']}코인" for it in store[user_id]["items"]]
         await ctx.send("**내 상점 상품 목록**\n" + "\n".join(lines))
 
-    # 상점 구경 (전체 목록)
     elif action == "구경":
         if not store:
             return await ctx.send("📭 활성화된 재능 상점이 없습니다.")
@@ -561,7 +558,6 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
 
         await ctx.send(embed=embed)
 
-    # 상품 구매
     elif action == "구매" and seller and args:
         sid = str(seller.id)
         match = re.search(r"\((.*?)\)", args)
@@ -595,7 +591,6 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
         except discord.Forbidden:
             await ctx.send(f"⚠️ {seller.mention}님께 DM을 보낼 수 없습니다.")
 
-    # 잘못된 명령어 안내
     else:
         usage = (
             "**사용법:**\n"
@@ -606,27 +601,48 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
         )
         await ctx.send(usage)
 
-# ───── 재능상점 도움말 명령어 (일반 출력 최적화) ─────
+# ───── 깔끔한 임베드 도움말 ─────
 @bot.command()
 async def 재능상점도움말(ctx):
-    msg = (
-        "**🌞 솔라 재능상점 도움말**\n"
-        "재능상점은 솔라리스 클랜원들이 보유한 다양한 재능을 클랜 내 화폐인 포인트 🪙로 사고 파는 거래 콘텐츠입니다.\n"
-        "재능 판매 및 구매는 '솔라재능상점'에서 이루어집니다.\n\n"
-        "**💸 판매하기**\n"
-        "• 👩🏻‍🎨 상품 등록 : `!재능상점 등록 (상품명) 가격`\n"
-        "• 📦 상품 목록 확인 : `!재능상점 관리`\n"
-        "• 🗑️ 상품 삭제 : `!재능상점 관리 (상품명) 삭제`\n\n"
-        "**🛍️ 구매하기**\n"
-        "• 🗂️ 상점 목록 보기 : `!재능상점 구경`\n"
-        "• 🎯 상품 구매 : `!재능상점 구매 @판매자 (상품명)`\n\n"
-        "**⚠️ 참고사항**\n"
-        "- 상품명은 반드시 괄호 `( )` 안에 작성\n"
-        "- 띄어쓰기 자유롭게 가능\n"
-        "- 구매 시 판매자 `@멘션` 필수\n"
-        "- 포인트 부족 시 구매 불가"
+    embed = discord.Embed(
+        title="🌞 솔라 재능상점 도움말",
+        description="재능상점은 솔라리스 클랜원들이 보유한 다양한 재능을 클랜 내 화폐인 포인트 🪙로 사고 파는 거래 콘텐츠입니다.\n재능 판매 및 구매는 '솔라재능상점'에서 이루어집니다.",
+        color=0x00ffcc
     )
-    await ctx.send(msg)
+
+    embed.set_thumbnail(url=ctx.bot.user.avatar.url)
+
+    embed.add_field(
+        name="🛒 판매하기",
+        value=(
+            "`!재능상점 등록 (상품명) 가격`\n"
+            "`!재능상점 관리`\n"
+            "`!재능상점 관리 (상품명) 삭제`"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🎯 구매하기",
+        value=(
+            "`!재능상점 구경`\n"
+            "`!재능상점 구매 @판매자 (상품명)`"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="⚠️ 참고사항",
+        value=(
+            "- 상품명은 반드시 괄호 `( )` 안에 작성\n"
+            "- 띄어쓰기 자유롭게 가능\n"
+            "- 구매 시 판매자 `@멘션` 필수\n"
+            "- 포인트 부족 시 구매 불가"
+        ),
+        inline=False
+    )
+
+    await ctx.send(embed=embed)
 
 # ───── 랭킹 시스템 ─────
 @bot.command()
