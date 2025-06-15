@@ -5,6 +5,7 @@ import csv
 import random
 import datetime
 import time
+import asyncio
 from collections import defaultdict
 
 import discord
@@ -357,7 +358,9 @@ async def 도박(ctx, 배팅: int):
 
     await ctx.send(f"{ctx.author.mention}\n{result_msg}\n💰 현재 보유 포인트: {data['user_points'][uid]:,}점")
 
-# ───── 슬롯머신 시스템 ─────
+
+# ───── 슬롯머신 시스템 애니메이션 풀버전 ─────
+
 BASE_JACKPOT = 1000
 BET_AMOUNT = 10
 JACKPOT_REWARD_RATIO = 0.8
@@ -372,32 +375,48 @@ async def 슬롯(ctx):
     data = read_data()
     uid = str(ctx.author.id)
 
-    # 포인트 부족 확인
     if data['user_points'].get(uid, 0) < BET_AMOUNT:
         await ctx.send("❌ 포인트 부족 (10점 필요)")
         return
 
-    # 베팅 차감 및 잭팟 누적
+    data.setdefault("slot_jackpot", BASE_JACKPOT)
+    data.setdefault("slot_attempts", {})
+
     data['user_points'][uid] -= BET_AMOUNT
     data['slot_jackpot'] += BET_AMOUNT
     data['slot_attempts'][uid] = data['slot_attempts'].get(uid, 0) + 1
 
-    # 슬롯 결과 생성
+    # 결과 미리 계산
     chance = random.random()
     if chance < SOLAR_JACKPOT_CHANCE:
-        result = ["☀️"] * 5
+        final_result = ["☀️"] * 5
     elif chance < OTHER_JACKPOT_CHANCE:
-        sym = random.choice(EMOJIS[1:])  
-        result = [sym] * 5
+        sym = random.choice(EMOJIS[1:])
+        final_result = [sym] * 5
     else:
         while True:
-            result = [random.choice(EMOJIS) for _ in range(5)]
-            if len(set(result)) > 1:
+            final_result = [random.choice(EMOJIS) for _ in range(5)]
+            if len(set(final_result)) > 1:
                 break
 
-    common = max(set(result), key=result.count)
-    cnt = result.count(common)
-    lines = [f"🎰 : {' '.join(result)}"]
+    # 🎰 애니메이션 시작
+    rolling_msg = await ctx.send("🎰 슬롯머신 작동중...")
+
+    for i in range(5):  # 5회 회전
+        roll = [random.choice(EMOJIS) for _ in range(5)]
+        display = f"🎰 | {' '.join(roll)}"
+        await rolling_msg.edit(content=display)
+        await asyncio.sleep(0.6 - i * 0.1)  # 점점 빨라지는 효과
+
+    await asyncio.sleep(0.5)
+    await rolling_msg.edit(content=f"🎯 최종 결과 | {' '.join(final_result)}")
+    await asyncio.sleep(0.8)
+
+    # 결과 계산
+    common = max(set(final_result), key=final_result.count)
+    cnt = final_result.count(common)
+
+    lines = []
 
     if cnt == 5:
         reward = int(data['slot_jackpot'] * JACKPOT_REWARD_RATIO)
@@ -405,35 +424,36 @@ async def 슬롯(ctx):
 
         if common == "☀️":
             reward += SOLAR_JACKPOT_BONUS
-            bonus_msg = "• ☀️ **솔라잭팟!** 500포인트 추가 보너스!"
+            bonus_msg = "☀️ **솔라잭팟! 추가 보너스 500포인트!**"
 
         data['user_points'][uid] += reward
-        pool = data['slot_jackpot'] - reward
+        leftover_pool = data['slot_jackpot'] - reward
+        attempts_sorted = sorted(data['slot_attempts'].items(), key=lambda x: x[1], reverse=True)
+        recipients = [user for user, _ in attempts_sorted if user != uid][:2]
+        share = leftover_pool // len(recipients) if recipients else 0
 
-        top2 = sorted(data['slot_attempts'].items(), key=lambda x: x[1], reverse=True)
-        recip = [u for u, _ in top2 if u != uid][:2]
-        share = pool // len(recip) if recip else 0
-        dist = [f"<@{r}> (+{share:,}점)" for r in recip]
+        for recipient_id in recipients:
+            data['user_points'][recipient_id] = data['user_points'].get(recipient_id, 0) + share
 
-        lines.append(f"• 🌟 {common} 5개 잭팟! 획득: {reward:,}점")
+        lines.append(f"🎉 **{common} 5개 잭팟 당첨! {reward:,}점 획득!**")
         if bonus_msg:
             lines.append(bonus_msg)
-        if dist:
-            lines.append(f"• 🎁 분배: {' / '.join(dist)}")
+        if recipients:
+            dist_msg = " / ".join([f"<@{r}> (+{share:,}점)" for r in recipients])
+            lines.append(f"🎁 잔여 분배: {dist_msg}")
 
         data['slot_jackpot'] = BASE_JACKPOT + sum(data['slot_attempts'].values()) * BET_AMOUNT
         data['slot_attempts'] = {}
 
     else:
-        base_plus = data['slot_jackpot'] - BASE_JACKPOT
-        lines.append("• 💀 꽝! 누적 상금은 계속 쌓입니다...")
-        lines.append(f"• 💸 누적 잭팟 : {BASE_JACKPOT} + {base_plus:,}점")
-        lines.append(f"• 💰 남은 내 포인트 : {data['user_points'][uid]:,}점")
+        lines.append("💀 꽝! 다음 기회를 노려보세요!")
+        lines.append(f"💸 누적 잭팟 : {data['slot_jackpot']:,}점")
+        lines.append(f"💰 남은 내 포인트 : {data['user_points'][uid]:,}점")
 
     write_data(data)
 
-    embed = Embed(
-        title=f"**[{ctx.author.display_name}님의 슬롯머신 결과]**",
+    embed = discord.Embed(
+        title=f"🎰 [{ctx.author.display_name}님의 슬롯 결과]",
         description="\n".join(lines),
         color=0xf1c40f
     )
