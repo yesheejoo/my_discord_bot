@@ -375,20 +375,23 @@ async def 슬롯(ctx):
     data = read_data()
     uid = str(ctx.author.id)
 
-    # 포인트 확인
+    # 유저 포인트 확인
     if data['user_points'].get(uid, 0) < BET_AMOUNT:
         await ctx.send("❌ 포인트 부족 (10포인트 필요)")
         return
 
-    # 잭팟 초기화 (최초 1회)
-    if "slot_jackpot" not in data:
-        data['slot_jackpot'] = BASE_JACKPOT
+    # 누적 베팅 초기화 (최초 1회)
+    if "slot_bets" not in data:
+        data['slot_bets'] = 0
 
-    # 베팅 처리
+    # 베팅 반영
     data['user_points'][uid] -= BET_AMOUNT
-    data['slot_jackpot'] += BET_AMOUNT
+    data['slot_bets'] += BET_AMOUNT
 
-    # 결과 미리 계산
+    # 잭팟 현재금 계산
+    current_jackpot = BASE_JACKPOT + data['slot_bets']
+
+    # 결과 미리 결정
     chance = random.random()
     if chance < SOLAR_JACKPOT_CHANCE:
         final_result = ["☀️"] * 5
@@ -401,7 +404,7 @@ async def 슬롯(ctx):
             if len(set(final_result)) > 1:
                 break
 
-    # 🎰 애니메이션 (초고속 4회전)
+    # 🎰 애니메이션 (4회 초고속 회전)
     rolling_msg = await ctx.send("🎰 슬롯머신 작동중...")
 
     for _ in range(4):
@@ -421,7 +424,7 @@ async def 슬롯(ctx):
     lines = []
 
     if cnt == 5:
-        reward = int(data['slot_jackpot'] * JACKPOT_REWARD_RATIO)
+        reward = int(current_jackpot * JACKPOT_REWARD_RATIO)
         bonus_msg = ""
 
         if common == "☀️":
@@ -434,13 +437,12 @@ async def 슬롯(ctx):
         if bonus_msg:
             lines.append(bonus_msg)
 
-        # 잭팟 초기화 (리셋)
-        data['slot_jackpot'] = BASE_JACKPOT
+        # 잭팟 완전 초기화
+        data['slot_bets'] = 0
 
     else:
-        accumulated = data['slot_jackpot'] - BASE_JACKPOT
         lines.append("💀 꽝! 누적 상금은 계속 쌓입니다...")
-        lines.append(f"💸 누적 잭팟 : {BASE_JACKPOT} + {accumulated:,} = {data['slot_jackpot']:,}포인트")
+        lines.append(f"💸 누적 잭팟 : {BASE_JACKPOT} + {data['slot_bets']:,} = {current_jackpot:,}포인트")
         lines.append(f"💰 남은 내 포인트 : {data['user_points'][uid]:,}포인트")
 
     write_data(data)
@@ -452,7 +454,6 @@ async def 슬롯(ctx):
     )
     embed.set_thumbnail(url=ctx.author.display_avatar.url)
     await ctx.send(embed=embed)
-
 # ───── 보내기 시스템 ─────
 @bot.command()
 async def 보내기(ctx, member: discord.Member, 금액: int):
