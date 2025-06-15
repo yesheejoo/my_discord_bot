@@ -104,7 +104,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ───── 출석 ─────
 MILESTONES = {5: 50, 10: 100, 15: 150, 20: 200, 30: 300, 50: 500, 75: 750, 100: 1000}
-GIVERS =["Margo", "지봄이", "노듀오", "리망쿠", "인영킴이", "영규", "슝슝이", "재앙이"]
+GIVERS = ["Margo", "지봄이", "노듀오", "리망쿠", "인영킴이", "영규", "슝슝이", "재앙이"]
 
 @bot.command()
 async def 출석(ctx):
@@ -129,34 +129,44 @@ async def 출석(ctx):
         data["streak_log"][uid] = 1
 
     base_reward = 50
-    bonus = random.choice([40 if random.random() < 0.05 else random.randint(1,5) if random.random()<0.3 else 0])
+    bonus = random.choice([40 if random.random() < 0.05 else random.randint(1, 5) if random.random() < 0.3 else 0])
     total = base_reward + bonus
 
     data["user_points"][uid] += total
-    data["activity_xp"].setdefault(uid, 0)
     data["activity_xp"][uid] += total
     data["checkin_log"][uid].append(today)
 
     total_checkins = len(data["checkin_log"][uid])
     milestone_bonus = MILESTONES.get(total_checkins, 0)
     milestone_msg = ""
-    
+
     if milestone_bonus:
         data["user_points"][uid] += milestone_bonus
         data["activity_xp"][uid] += milestone_bonus
         giver = random.choice(GIVERS)
         meme = random.choice([
             f"{giver}가 포인트를 던지고 사라졌습니다! 🏃‍♂️",
-            f"{giver}가 '이 정도면 만적?' 하며 {milestone_bonus}포인트 던지므. 😏"
+            f"{giver}가 '이 정도면 만족?' {milestone_bonus}포인트 던짐~ 😏"
         ])
-        milestone_msg = f"🎯 누적 {total_checkins}일 출석 복사! {meme}"
+        milestone_msg = f"🎯 누적 {total_checkins}일 출석 보상 획득! {meme}"
 
     write_data(data)
 
-    msg = (f"📅 출석 완료: {total}포인트 획득!\n📖 누적 출석 {total_checkins}일, 연속 {data['streak_log'][uid]}일"
-           + (f"\n{milestone_msg}" if milestone_bonus else ""))
+    # 임베드로 출력
+    embed = discord.Embed(
+        title=f"**🍀 {ctx.author.mention} 님 출석 완료!**",
+        description=(
+            f"• 📅 출석 보상 : {total}포인트 획득!\n"
+            f"• 🏃🏻 누적 출석 {total_checkins}일, 연속 {data['streak_log'][uid]}일"
+        ),
+        color=discord.Color.green()
+    )
 
-    await ctx.send(msg)
+    if milestone_bonus:
+        embed.add_field(name="🎯 추가 보상", value=milestone_msg, inline=False)
+
+    embed.set_thumbnail(url=ctx.author.display_avatar.url)
+    await ctx.send(embed=embed)
 
 @bot.command()
 async def 출석현황(ctx):
@@ -166,9 +176,22 @@ async def 출석현황(ctx):
     streak_days = data["streak_log"].get(uid, 0)
 
     next_milestone = next((m for m in sorted(MILESTONES) if total_days < m), None)
-    remain = f"다음 마일스톤까지 {next_milestone - total_days}일 남았습니다." if next_milestone else "최고 마일스톤 도달!"
+    remain_text = (
+        f"🔥 다음 출석 보상까지 {next_milestone - total_days}일 남았습니다."
+        if next_milestone else "🎉 최고 보상까지 모두 도달했습니다!"
+    )
 
-    await ctx.send(f"📊 총 출석 {total_days}일, 연속 {streak_days}일\n{remain}")
+    embed = discord.Embed(
+        title=f"**📊 {ctx.author.mention} 님의 출석 현황**",
+        description=(
+            f"• 🏃🏻 누적 출석 {total_days}일, 연속 {streak_days}일\n"
+            f"• {remain_text}"
+        ),
+        color=discord.Color.blue()
+    )
+    embed.set_thumbnail(url=ctx.author.display_avatar.url)
+
+    await ctx.send(embed=embed)
 
 # ───── 포인트 조회 ─────
 @bot.command()
