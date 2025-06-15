@@ -465,75 +465,14 @@ async def 보내기(ctx, member: discord.Member, 금액: int):
     write_data(data)
     await ctx.send(f"📤 {ctx.author.display_name}님이 {member.display_name}님에게 {금액:,}포인트를 보냈습니다!")
 
-# ───── 재능상점 파일 I/O ─────
-TALENT_STORE_FILE = os.path.join(BASE_DIR, "talent_store.json")
-
-def load_talent_store():
-    if not os.path.exists(TALENT_STORE_FILE):
-        return {}
-    try:
-        with open(TALENT_STORE_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except:
-        return {}
-
-def save_talent_store(store):
-    with open(TALENT_STORE_FILE, 'w', encoding='utf-8') as f:
-        json.dump(store, f, indent=2, ensure_ascii=False)
-
-
-# ───── 재능상점 판매 등록/관리 ─────
-@bot.command()
-async def 재능상점판매(ctx, action=None, *, args=None):
-    user_id = str(ctx.author.id)
-    store = load_talent_store()
-
-    if user_id not in store:
-        store[user_id] = {"items": []}
-
-    if action == "상품등록":
-        if not args:
-            return await ctx.send("❗ 등록 형식: !재능상점판매 상품등록 이름 가격")
-
-        parts = args.split()
-        if len(parts) < 2:
-            return await ctx.send("❗ 등록 형식: !재능상점판매 상품등록 이름 가격")
-
-        name, price = parts[0], int(parts[1])
-        store[user_id]["items"].append({"name": name, "price": price})
-        save_talent_store(store)
-        await ctx.send(f"✅ 상품 '{name}'이(가) 등록되었습니다. 가격: {price}코인")
-
-    elif action == "관리":
-        if args and args.endswith(" 삭제"):
-            nm = args[:-3].strip()
-            before = len(store[user_id]["items"])
-            store[user_id]["items"] = [it for it in store[user_id]["items"] if it["name"] != nm]
-            save_talent_store(store)
-
-            if len(store[user_id]["items"]) < before:
-                return await ctx.send(f"🗑️ 상품 '{nm}'이(가) 삭제되었습니다.")
-            else:
-                return await ctx.send(f"❌ '{nm}' 상품을 찾을 수 없습니다.")
-
-        items = store[user_id]["items"]
-        if not items:
-            return await ctx.send("📦 등록된 상품이 없습니다.")
-
-        lines = [f"• {it['name']} — {it['price']}코인" for it in items]
-        await ctx.send("**내 상점 상품 목록**\n" + "\n".join(lines))
-
-    else:
-        await ctx.send("사용법: !재능상점판매 상품등록/관리 <args>")
-
-# ───── 재능상점 구매 ─────
+# ───── 재능상점 통합 명령어 ─────
 @bot.command()
 async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=None):
     user_id = str(ctx.author.id)
     store = load_talent_store()
     data = read_data()
 
-    # ───── 등록 ─────
+    # 상품 등록
     if action == "등록":
         if user_id not in store:
             store[user_id] = {"items": []}
@@ -550,7 +489,7 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
         save_talent_store(store)
         await ctx.send(f"✅ 상품 '{name}'이(가) 등록되었습니다. 가격: {price}코인")
 
-    # ───── 관리 ─────
+    # 상품 관리 (조회/삭제)
     elif action == "관리":
         if user_id not in store or not store[user_id]["items"]:
             return await ctx.send("📦 등록된 상품이 없습니다.")
@@ -560,7 +499,7 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
             before = len(store[user_id]["items"])
             store[user_id]["items"] = [it for it in store[user_id]["items"] if it["name"] != nm]
             save_talent_store(store)
-            
+
             if len(store[user_id]["items"]) < before:
                 return await ctx.send(f"🗑️ 상품 '{nm}'이(가) 삭제되었습니다.")
             else:
@@ -569,34 +508,23 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
         lines = [f"• {it['name']} — {it['price']}코인" for it in store[user_id]["items"]]
         await ctx.send("**내 상점 상품 목록**\n" + "\n".join(lines))
 
-    # ───── 구경 (임베드 출력) ─────
+    # 상점 구경 (전체 목록)
     elif action == "구경":
         if not store:
             return await ctx.send("📭 활성화된 재능 상점이 없습니다.")
 
         embed = discord.Embed(title="🛍️ 재능 상점 판매 목록", color=discord.Color.gold())
-        header = f"{'판매자':<12} | {'상품명':<15} | {'가격':<6} | {'상품수':<4}"
-        embed.add_field(name="목록", value=f"```{header}\n{'-'*45}```", inline=False)
 
-        lines = []
         for sid, info in store.items():
             member = ctx.guild.get_member(int(sid))
-            items = info['items']
-            item_count = len(items)
-
-            if not items:
-                lines.append(f"{member.display_name:<12} | {'없음':<15} | {'-':<6} | {0:<4}")
+            if not member or not info['items']:
                 continue
+            item_list = "\n".join([f"{it['name']} — {it['price']}코인" for it in info['items']])
+            embed.add_field(name=f"{member.display_name}님의 상점", value=item_list, inline=False)
 
-            for item in items:
-                line = f"{member.display_name:<12} | {item['name']:<15} | {item['price']}코인 | {item_count:<4}"
-                lines.append(line)
-
-        chunk = "```" + "\n".join(lines) + "```"
-        embed.add_field(name="상품 목록", value=chunk, inline=False)
         await ctx.send(embed=embed)
 
-    # ───── 구매 ─────
+    # 상품 구매
     elif action == "구매" and seller and args:
         sid = str(seller.id)
         item_name = args.strip()
@@ -612,26 +540,81 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
         if data['user_points'].get(user_id, 0) < price:
             return await ctx.send("😢 포인트가 부족합니다.")
 
-        # 포인트 이동
+        # 포인트 이동 처리
         data['user_points'][user_id] -= price
         data['user_points'][sid] = data['user_points'].get(sid, 0) + price
         write_data(data)
 
         await ctx.send(f"🎉 {seller.display_name}님의 상품 '{item_name}'을(를) {price}코인에 구매했습니다!")
 
-        # 판매자에게 DM 발송
+        # DM 알림
         try:
-            buyer_name = ctx.author.display_name
             dm_msg = (
-                f"📢 {buyer_name}님이 당신의 상품 **'{item_name}'**을(를) {price}코인에 구매했습니다!\n"
-                f"서버에서 확인해 주세요: {ctx.guild.name}"
+                f"📢 {ctx.author.display_name}님이 당신의 상품 **'{item_name}'**을(를) {price}코인에 구매했습니다!"
             )
             await seller.send(dm_msg)
         except discord.Forbidden:
             await ctx.send(f"⚠️ {seller.mention}님께 DM을 보낼 수 없습니다.")
 
+    # 잘못된 명령어 안내
     else:
-        await ctx.send("사용법: !재능상점 등록/관리/구경/구매")
+        usage = (
+            "**사용법:**\n"
+            "`!재능상점 등록 상품이름 가격`\n"
+            "`!재능상점 관리 [상품이름 삭제]`\n"
+            "`!재능상점 구경`\n"
+            "`!재능상점 구매 @판매자 상품이름`"
+        )
+        await ctx.send(usage)
+
+# ───── 재능상점 도움말 명령어 ─────
+@bot.command()
+async def 재능상점도움말(ctx):
+    embed = discord.Embed(
+        title="📖 재능상점 이용 가이드",
+        description="재능상점 판매 및 구매 기능 사용법입니다.",
+        color=0x00ffcc
+    )
+
+    embed.add_field(
+        name="🛒 판매하기",
+        value=(
+            "**상품 등록:**\n"
+            "`!재능상점 등록 상품이름 가격`\n"
+            "예: `!재능상점 등록 디자인상담 500`\n\n"
+            "**상품 목록 확인:**\n"
+            "`!재능상점 관리`\n\n"
+            "**상품 삭제:**\n"
+            "`!재능상점 관리 상품이름 삭제`\n"
+            "예: `!재능상점 관리 디자인상담 삭제`"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🎯 구매하기",
+        value=(
+            "**상점 목록 보기:**\n"
+            "`!재능상점 구경`\n\n"
+            "**상품 구매:**\n"
+            "`!재능상점 구매 @판매자 상품이름`\n"
+            "예: `!재능상점 구매 @디자인님 디자인상담`"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="⚠️ 참고사항",
+        value=(
+            "- 상품명은 한 단어 사용 권장 (띄어쓰기 주의)\n"
+            "- 판매자 `@멘션` 필수\n"
+            "- 구매 시 포인트 차감 및 적립\n"
+            "- 포인트 부족 시 구매 불가"
+        ),
+        inline=False
+    )
+
+    await ctx.send(embed=embed)
 
 # ───── 랭킹 시스템 ─────
 @bot.command()
