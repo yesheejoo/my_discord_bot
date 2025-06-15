@@ -31,7 +31,7 @@ DEFAULT_DATA = {
     "slot_jackpot": 0,
     "slot_attempts": {},
     "beg_log": {},
-    "usernames": {}
+    "usernames": {},
     "inventory": {}
 }
 
