@@ -235,59 +235,32 @@ async def 평균(ctx):
 # ───── 포인트 & 레벨 정보 ─────
 @bot.command()
 async def 포인트(ctx):
-    uid = str(ctx.author.id)
-    member = ctx.author
-
     load_points()
-    load_bank()
-    # 활동·관리자 XP 불러오기 (메모리 상 이미 있거나 없으면 0)
-    activity = activity_xp.get(uid, 0)
-    admin = admin_xp.get(uid, 0)
-    total_xp = activity + admin
-
-    wallet = user_points.get(uid, 0)
-    bank = bank_data.get(uid, 0)
-    total_point = wallet + bank
-
-    # 레벨 계산
-    def calculate_level(xp):
-        thresholds = {1: 50, 2: 100, 3: 300, 4: 450, 5: 600, 6: 750, 7: 900, 8: 1100, 9: 1300, 10: float('inf')}
-        level = 0
-        for lvl, req in thresholds.items():
-            if xp >= req:
-                level = lvl
-                xp -= req
-            else:
-                next_xp = req - xp
-                break
-        else:
-            next_xp = 0
-        return level, next_xp
-
-    level, next_level_xp = calculate_level(total_xp)
-    sorted_users = sorted(user_points.items(), key=lambda x: x[1], reverse=True)
-    rank = next((i + 1 for i, (u, _) in enumerate(sorted_users) if u == uid), None)
-
-    embed = discord.Embed(
-        title=f"{member.display_name} 님의 포인트 & 레벨 정보",
-        description=(
-            f"• 🏃🏻 레벨 : {level}레벨\n"
-            f"• 🔼 다음 레벨까지 : {next_level_xp:,} 포인트\n"
-            f"• 📊 순위 : {rank}위 / {len(sorted_users)}명 중\n\n"
-            f"• 💰 총 자산 : 지갑 {wallet:,} + 은행 {bank:,} = {total_point:,} 포인트\n\n"
-            f"• 🎧 디스코드 활동 포인트 : {activity:,} 포인트\n"
-            f"• 🧧 관리자 지급 포인트 : {admin:,} 포인트"
-        ),
-        color=0x55CCFF
+    uid = str(ctx.author.id)
+    act = activity_xp.get(uid, 0)
+    adm = admin_xp.get(uid, 0)
+    txp = act + adm
+    lvl, nxt = calculate_level(txp)
+    pts = user_points.get(uid, 0)
+    rank = next((i + 1 for i, (u, _) in enumerate(sorted(user_points.items(), key=lambda x: x[1], reverse=True)) if u == uid), None)
+    cur = sum(xp_for_next(i) for i in range(1, lvl))
+    prog = int((txp - cur) / xp_for_next(lvl) * 10)
+    bar = "▰" * prog + "▱" * (10 - prog)
+    e = Embed(title=f"**{ctx.author.display_name} 님의 포인트 & 레벨 정보**", color=0x55CCFF)
+    e.description = (
+        f"• 🏃🏻 레벨 : {get_rank(lvl)} ({lvl})\n"
+        f"  📈 진척도 : {bar}\n\n"
+        f"• 🔼 다음 레벨까지 : {nxt:,} 포인트\n"
+        f"• 📊 순위 : {rank}위 / {len(user_points)}명 중\n\n\n"
+        f"• 💰 총 포인트 : {pts:,} 포인트\n\n"
+        f"• 🎧 활동 포인트:\n    • 디코 활동 : {act:,} 포인트\n    • 관리자 지급 : {adm:,} 포인트\n    • 도박 획득 : {gamble_points.get(uid, 0):,} 포인트"
     )
-    await ctx.send(embed=embed)
+    await ctx.send(embed=e)
+    prev_lvl = user_levels.get(uid, 0)
+    if lvl > prev_lvl:
+        await ctx.send(f"💥 {ctx.author.display_name}님은 메카살인기의 축복을 받아 {prev_lvl} ➡️ {lvl} 레벨로 진화했습니다! ⚙️")
+    user_levels[uid] = lvl
 
-    # 레벨업 메시지
-    previous_level = user_levels.get(uid, 0)
-    if level > previous_level:
-        await ctx.send(f"💥 {member.display_name}님은 메카살인기의 축복을 받아 {previous_level} ➡️ {level} 레벨로 진화했습니다! ⚙️")
-
-    user_levels[uid] = level
 
 # ───── 도박 기능 ─────
 @bot.command()
@@ -548,42 +521,78 @@ async def 전체초기화(ctx):
     await ctx.send("🔄 모든 유저 데이터가 초기화되었습니다. (포인트, 레벨, 기록 등)")
 
 # ───── 출석 체크 기능 ─────
+milestone_rewards = {
+    5: 50, 10: 100, 15: 150, 20: 200, 30: 300, 50: 500, 75: 750, 100: 1000
+}
+
+# 병맛 giver 리스트
+givers = ["Margo", "지봄이", "노듀오", "리망쿠", "인영킴이", "영규", "슝슝이", "재앙이"]
+
 @bot.command()
 async def 출석(ctx):
     load_points()
     uid = str(ctx.author.id)
-    now_kst = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
-    date_key = now_kst.strftime("%Y-%m-%d")
+    today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d")
 
-    if uid not in checkin_log:
-        checkin_log[uid] = []
+    data["checkin_log"].setdefault(uid, [])
+    data["streak_log"].setdefault(uid, 0)
+    data["user_points"].setdefault(uid, 0)
+    data["activity_xp"].setdefault(uid, 0)
 
-    if date_key in checkin_log[uid]:
-        await ctx.send(f"❗ 이미 {date_key}에 출석하셨습니다.")
-        return
+    if today in data["checkin_log"][uid]:
+        return await ctx.send(f"❗ 이미 {today}에 출석하셨습니다.")
 
-    base_reward = 10
+    yesterday = (datetime.datetime.utcnow() + datetime.timedelta(hours=9) - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+    if yesterday in data["checkin_log"][uid]:
+        data["streak_log"][uid] += 1
+    else:
+        data["streak_log"][uid] = 1
+
+    # 기본 출석 보상
+    base_reward = 50
     bonus = 0
-    bonus_msg = ""
 
     chance = random.randint(1, 100)
     if chance <= 5:
         bonus = 40
-        bonus_msg = "💥 당신의 출석은 메카살인기의 심장을 깨웠습니다.\n🎉 대박! 추가로 40포인트와 경험치를 획득했습니다!"
     elif chance <= 30:
         bonus = random.randint(1, 5)
-        bonus_msg = f"✨ 보너스 {bonus}포인트와 경험치를 추가로 획득했습니다!"
 
     total = base_reward + bonus
-    user_points[uid] = user_points.get(uid, 0) + total
-    activity_xp[uid] = activity_xp.get(uid, 0) + total
-    checkin_log[uid].append(date_key)
+    data["user_points"][uid] += total
+    data["activity_xp"][uid] += total
+    data["checkin_log"][uid].append(today)
+
+    total_checkins = len(data["checkin_log"][uid])
+    milestone_bonus = milestone_rewards.get(total_checkins, 0)
+    milestone_msg = ""
+
+    if milestone_bonus > 0:
+        data["user_points"][uid] += milestone_bonus
+        data["activity_xp"][uid] += milestone_bonus
+
+        giver = random.choice(givers)
+        meme_messages = [
+            f"{giver}가 튀어나와 포인트를 던지고 사라졌습니다! 🏃‍♂️💨",
+            f"{giver}가 '아 몰라~' 하고 포인트를 던졌습니다. 🤷‍♂️",
+            f"{giver}가 '이 정도면 만족?' 하며 {milestone_bonus}포인트를 던져줬습니다. 😏",
+            f"{giver}가 조용히 포인트를 밀어넣고 아무 일 없다는 듯 사라졌습니다. 🕶️"
+        ]
+        selected_meme = random.choice(meme_messages)
+        milestone_msg = f"🎯 누적 {total_checkins}일 출석 보상! {selected_meme}"
+
     save_points()
 
-    if bonus_msg:
-        await ctx.send(f"📅 {date_key} 출석체크 완료! {base_reward}포인트를 획득했습니다.\n{bonus_msg}")
-    else:
-        await ctx.send(f"📅 {date_key} 출석체크 완료! {base_reward}포인트를 획득했습니다.")
+    # 최종 출력
+    message = (
+        f"📅 출석 완료 : 출쳌 {total}포인트를 획득했습니다!\n"
+        f"📖 누적 출석 일수: {total_checkins}일차 입니다!\n"
+        f"🔥 현재 연속 출석: {data['streak_log'][uid]}일차 유지중입니다!"
+    )
+    if milestone_bonus > 0:
+        message += f"\n{milestone_msg}"
+
+    await ctx.send(message)
 
 # ───── 관리자 수동 지급 ─────
 @bot.command()
@@ -628,6 +637,55 @@ async def 도움말(ctx):
         color=0xFF4444
     )
     await ctx.send(embed=embed)
+
+# ───── 출석 현황 ─────
+@bot.command()
+async def 출석현황(ctx):
+    load_points()
+    uid = str(ctx.author.id)
+
+    total_days = len(data["checkin_log"].get(uid, []))
+    streak_days = data["streak_log"].get(uid, 0)
+
+    next_milestone = None
+    for milestone in sorted(milestone_rewards.keys()):
+        if total_days < milestone:
+            next_milestone = milestone - total_days
+            break
+
+    message = f"📊 {ctx.author.display_name}님의 출석 현황\n"
+    message += f"총 출석일: {total_days}일\n"
+    message += f"연속 출석일: {streak_days}일\n"
+    if next_milestone:
+        message += f"다음 마일스톤까지 {next_milestone}일 남았습니다! 🔥"
+    else:
+        message += "최고 마일스톤 달성중입니다! 🎉"
+
+    await ctx.send(message)
+
+# ───── 월간 출석 랭킹 ─────
+@bot.command()
+async def 출석랭킹(ctx):
+    load_points()
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
+    this_month = now.strftime("%Y-%m")
+
+    monthly_counts = defaultdict(int)
+    for uid, dates in data["checkin_log"].items():
+        monthly_counts[uid] = sum(1 for d in dates if d.startswith(this_month))
+
+    ranking = sorted(monthly_counts.items(), key=lambda x: x[1], reverse=True)
+
+    message = f"🏆 {now.strftime('%Y년 %m월')} 출석 랭킹 🏆\n"
+    for idx, (uid, count) in enumerate(ranking[:10], 1):
+        try:
+            member = await ctx.guild.fetch_member(int(uid))
+            message += f"{idx}위: {member.display_name} - {count}일 출석\n"
+        except:
+            message += f"{idx}위: Unknown User - {count}일 출석\n"
+
+    await ctx.send(message)
+
 
 # ───── 범죄 명령어 ─────
 MAX_CRIMES_PER_DAY = 5
