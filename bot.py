@@ -376,7 +376,7 @@ async def 슬롯(ctx):
     uid = str(ctx.author.id)
 
     if data['user_points'].get(uid, 0) < BET_AMOUNT:
-        await ctx.send("❌ 포인트 부족 (10점 필요)")
+        await ctx.send("❌ 포인트 부족 (10포인트 필요)")
         return
 
     data.setdefault("slot_jackpot", BASE_JACKPOT)
@@ -399,18 +399,18 @@ async def 슬롯(ctx):
             if len(set(final_result)) > 1:
                 break
 
-    # 🎰 애니메이션 시작
+    # 🎰 애니메이션 시작 (속도 업그레이드)
     rolling_msg = await ctx.send("🎰 슬롯머신 작동중...")
 
-    for i in range(5):  # 5회 회전
+    for i in range(6):  # 6회전 (살짝 길게)
         roll = [random.choice(EMOJIS) for _ in range(5)]
         display = f"🎰 | {' '.join(roll)}"
         await rolling_msg.edit(content=display)
-        await asyncio.sleep(0.6 - i * 0.1)  # 점점 빨라지는 효과
+        await asyncio.sleep(0.3 - i * 0.03)  # 속도 가속도 빠르게
 
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(0.3)
     await rolling_msg.edit(content=f"🎯 최종 결과 | {' '.join(final_result)}")
-    await asyncio.sleep(0.8)
+    await asyncio.sleep(0.5)
 
     # 결과 계산
     common = max(set(final_result), key=final_result.count)
@@ -435,20 +435,22 @@ async def 슬롯(ctx):
         for recipient_id in recipients:
             data['user_points'][recipient_id] = data['user_points'].get(recipient_id, 0) + share
 
-        lines.append(f"🎉 **{common} 5개 잭팟 당첨! {reward:,}점 획득!**")
+        lines.append(f"🎉 **{common} 5개 잭팟 당첨! {reward:,}포인트 획득!**")
         if bonus_msg:
             lines.append(bonus_msg)
         if recipients:
-            dist_msg = " / ".join([f"<@{r}> (+{share:,}점)" for r in recipients])
+            dist_msg = " / ".join([f"<@{r}> (+{share:,}포인트)" for r in recipients])
             lines.append(f"🎁 잔여 분배: {dist_msg}")
 
         data['slot_jackpot'] = BASE_JACKPOT + sum(data['slot_attempts'].values()) * BET_AMOUNT
         data['slot_attempts'] = {}
 
     else:
+        total_jackpot = BASE_JACKPOT
+        accumulated = data['slot_jackpot'] - BASE_JACKPOT
         lines.append("💀 꽝! 다음 기회를 노려보세요!")
-        lines.append(f"💸 누적 잭팟 : {data['slot_jackpot']:,}점")
-        lines.append(f"💰 남은 내 포인트 : {data['user_points'][uid]:,}점")
+        lines.append(f"💸 누적 잭팟 : {total_jackpot} + {accumulated:,} = {data['slot_jackpot']:,}포인트")
+        lines.append(f"💰 남은 내 포인트 : {data['user_points'][uid]:,}포인트")
 
     write_data(data)
 
