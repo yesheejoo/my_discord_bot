@@ -278,34 +278,31 @@ async def 구걸(ctx):
 # ───── 도움말 ─────
 @bot.command()
 async def 도움말(ctx):
-    embed = discord.Embed(title="메카살인기 • 솔라리스 봇 도움말", color=0xFFA500)
+    embed = discord.Embed(title="**메카살인기 • 솔라리스 봇 도움말**", color=0xFFA500)
     
     embed.add_field(
-        name="💡 **포인트 획득**", 
+        name="💡 포인트 획득", 
         value=(
-            "└ 음성채널 접속 시 자동 적립\n"
-            "    └ 🎤 마이크 ON: 1분당 2포인트\n"
-            "    └ 🎙️ 마이크 OFF: 1분당 1포인트\n"
-            "└ ⚔️ 내전 참여 시 추가 포인트 획득 가능"
-        ), 
+            "• 음성 채널 접속 시 자동 적립\n"
+            "└ 마이크 ON : 1분당 2포인트\n"
+            "└ 마이크 OFF : 1분당 1포인트\n"
+            "• ⚔️ 내전 참여 시 추가 포인트 획득 가능"
+        ),
         inline=False
     )
     
+    embed.add_field(name="📅 `!출석` : 하루 1회 출석 체크 및 보상 지급", 
+                    value="└ `!출석현황` 으로 출석 진행 상황 확인 가능", inline=False)
+    embed.add_field(name="💰 `!포인트` : 내 포인트, XP, 레벨 확인", value="", inline=False)
+    embed.add_field(name="🏆 `!랭킹` : 상위 10명 순위 확인", value="", inline=False)
+    embed.add_field(name="📊 `!평균` : 평균 인원 수, 총합, 1인 평균 확인", value="", inline=False)
+    embed.add_field(name="🙏 `!구걸` : 하루 제한 횟수 내 추가 포인트 시도", value="", inline=False)
+    embed.add_field(name="🎲 `!도박 금액` : 도박으로 포인트 배수 도전", value="", inline=False)
+    embed.add_field(name="🎰 `!슬롯` : 슬롯머신 참가 및 잭팟 도전", value="", inline=False)
+    embed.add_field(name="📤 `!보내기 @유저 금액` : 다른 유저에게 포인트 전송", value="", inline=False)
+    embed.add_field(name="🛠️ `!지급 @유저 금액` : (관리자) 유저에게 포인트 지급", value="", inline=False)
     embed.add_field(
-        name="📅 **!출석 : 하루 1회 출석 체크 및 보상 지급**", 
-        value="└ `!출석현황` 으로 출석 진행 상황 확인 가능", 
-        inline=False
-    )
-    embed.add_field(name="💰 **!포인트 : 내 포인트, XP, 레벨 확인**", value="", inline=False)
-    embed.add_field(name="🏆 **!랭킹 : 상위 10명 순위 확인**", value="", inline=False)
-    embed.add_field(name="📊 **!평균 : 평균 인원 수, 총합, 1인 평균 확인**", value="", inline=False)
-    embed.add_field(name="🙏 **!구걸 : 하루 제한 횟수 내 추가 포인트 시도**", value="", inline=False)
-    embed.add_field(name="🎲 **!도박 금액 : 도박으로 포인트 배수 도전**", value="", inline=False)
-    embed.add_field(name="🎰 **!슬롯 : 슬롯머신 참가 및 잭팟 도전**", value="", inline=False)
-    embed.add_field(name="📤 **!보내기 @유저 금액 : 다른 유저에게 포인트 전송**", value="", inline=False)
-    embed.add_field(name="🛠️ **!지급 @유저 금액 : (관리자) 유저에게 포인트 지급**", value="", inline=False)
-    embed.add_field(
-        name="🛒 **!재능상점 등록/관리/구경/구매**", 
+        name="🛒 `!재능상점 등록/관리/구경/구매`", 
         value="└ 자세한 사용법은 `!재능상점 도움말` 을 참고해주세요.", 
         inline=False
     )
@@ -313,7 +310,6 @@ async def 도움말(ctx):
     embed.set_footer(text="메카살인기 • 솔라리스")
     embed.set_thumbnail(url=ctx.me.display_avatar.url)
     await ctx.send(embed=embed)
-
 
 # ───── 도박 시스템 (최신 확률 적용) ─────
 @bot.command()
