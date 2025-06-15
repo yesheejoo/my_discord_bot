@@ -9,146 +9,131 @@ import time
 import discord
 from discord.ext import commands
 from discord import Embed
-from collections import defaultdict
 
 # ───── 파일 경로 정의 ─────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-POINTS_FILE    = os.path.join(BASE_DIR, "database.json")
+POINTS_FILE = os.path.join(BASE_DIR, "database.json")
+BANK_FILE = os.path.join(BASE_DIR, "bank.json")
 POINT_LOG_FILE = os.path.join(BASE_DIR, "point_log.json")
 INVENTORY_FILE = os.path.join(BASE_DIR, "inventory.json")
-ITEMS_FILE     = os.path.join(BASE_DIR, "items.json")
-USERS_FILE     = os.path.join(BASE_DIR, "users.json")
-TALENT_STORE_FILE = os.path.join(BASE_DIR, "talent_store.json")
-DATA_FILE = "attendance_data.json"
-
-# ───── 관리자 권한 ID 리스트 ─────
-allowed_admin_ids = [518697602774990859, 1335240110358265967]
-
-def is_admin():
-    from discord.ext.commands import check
-    def predicate(ctx):
-        return ctx.author.id in allowed_admin_ids
-    return check(predicate)
+ITEMS_FILE = os.path.join(BASE_DIR, "items.json")
+USERS_FILE = os.path.join(BASE_DIR, "users.json")
+CRIME_LOG_FILE = os.path.join(BASE_DIR, "crime_log.json")
 
 # ───── 전역 변수 초기화 ─────
-data = {} 
-user_join_times   = {}  # {uid: datetime}
-user_mic_history  = {}  # {uid: [(timestamp, mic_on), ...]}
-user_points       = {}  # dict[str, int]
-activity_xp       = {}  # dict[str, int]
-admin_xp        = {}  # dict[str, int]
-gamble_points     = {}  # dict[str, int]
-gamble_losses     = {}  # dict[str, int]
-user_levels       = {}  # dict[str, int]
-checkin_log       = {}  # dict[str, list[str]]        # 출석 기록 (누적)
-streak_log        = {}  # dict[str, int]       # 연속 출석 기록
-point_log         = {}  # dict[str, dict]
-beg_log           = {}  # dict[str, list[str]]
-slot_jackpot      = 1000  # 슬롯머신 초기 잭팟 기본값 변경 (기본 1000포인트)
-slot_attempts     = {}
+user_join_times = {}    # 음성 채널 입장 시간 기록
+user_mic_history = {}   # (timestamp, mic_on) 이력
+user_points = {}        # 지갑 포인트
+bank_data = {}          # 은행 포인트
+activity_xp = {}        # 활동으로 획득한 경험치
+admin_xp = {}           # 관리자가 지급한 경험치
+gamble_points = {}      # 도박으로 얻은 포인트
+gamble_losses = {}      # 도박으로 잃은 포인트
+user_levels = {}        # 레벨 상태
+checkin_log = {}        # 출석 기록
+point_log = {}          # 날짜별 포인트 기록
+daily_gamble_log = {}   # 도박 일별 기록
+crime_log = {}          # 범죄 시도 기록
 
-# ───── 슬롯머신 참가 비용 설정 ─────
-SLOT_COST         = 10    # 슬롯머신 1회 참가 비용 (기본값 10포인트)
+# 관리자 권한 ID 리스트
+allowed_admin_ids = [518697602774990859, 1335240110358265967]
 
-# ───── JSON 헬퍼 ─────
+# ───── JSON 읽기/쓰기 헬퍼 ─────
 def read_json(path):
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-    except:
+    except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 def write_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
-# ───── 포인트 로드/저장 ─────
+# ───── 포인트 & 은행 로드/저장 함수 ─────
 def load_points():
-    global data, user_points, activity_xp, admin_xp, checkin_log, streak_log
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        data = {
-            "user_points": {},
-            "activity_xp": {},
-            "admin_xp": {},
-            "checkin_log": {},
-            "streak_log": {}
-        }
-        save_points()
+    global user_points
+    data = read_json(POINTS_FILE)
+    user_points.clear()
+    user_points.update(data)
 
-    user_points = data.get("user_points", {})
-    activity_xp = data.get("activity_xp", {})
-    admin_xp = data.get("admin_xp", {})
-    checkin_log = data.get("checkin_log", {})
-    streak_log = data.get("streak_log", {})
+def save_points():
+    write_json(POINTS_FILE, user_points)
 
-# ───── 사용자 닉네임 저장 ─────
+def load_bank():
+    global bank_data
+    data = read_json(BANK_FILE)
+    bank_data.clear()
+    bank_data.update(data)
+
+def save_bank():
+    write_json(BANK_FILE, bank_data)
+
+def load_point_log():
+    global point_log
+    data = read_json(POINT_LOG_FILE)
+    point_log.clear()
+    point_log.update(data)
+
+def save_point_log():
+    write_json(POINT_LOG_FILE, point_log)
+
+def load_crime_log():
+    global crime_log
+    data = read_json(CRIME_LOG_FILE)
+    crime_log.clear()
+    crime_log.update(data)
+
+def save_crime_log():
+    write_json(CRIME_LOG_FILE, crime_log)
+
+def load_usernames():
+    global_users = read_json(USERS_FILE)
+    # 반환하지 않고 USERS_FILE에 저장된 상태를 글로 읽어둘 뿐
+
 def save_username(member):
     users = read_json(USERS_FILE)
-    users[str(member.id)] = member.display_name
+    uid = str(member.id)
+    users[uid] = member.display_name
     write_json(USERS_FILE, users)
 
 # ───── 봇 설정 ─────
 TOKEN = os.environ.get("BOT_TOKEN")
 if not TOKEN:
-    raise ValueError("BOT_TOKEN이 설정되지 않았습니다.")
+    raise ValueError("❗ BOT_TOKEN 환경변수가 설정되지 않았습니다.")
 
 intents = discord.Intents.default()
 intents.voice_states = True
 intents.members = True
 intents.message_content = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ───── 포인트/XP 비율 ─────
-POINT_RATE = {"off": 1, "on": 2}
-
-# ───── 레벨 계산 ─────
-def xp_for_next(level: int) -> int:
-    return 50 + (level - 1) * 10
-
-def calculate_level(total_xp: int):
-    lvl, xp = 1, total_xp
-    while True:
-        need = xp_for_next(lvl)
-        if xp < need:
-            return lvl, need - xp
-        xp -= need
-        lvl += 1
-
-# ───── 랭크 매핑 (LoL) ─────
-MAJOR_RANKS = [
-    (9, "언랭크"), (19, "Iron"), (29, "Bronze"), (39, "Silver"),
-    (49, "Gold"), (59, "Platinum"), (69, "Emerald"), (79, "Diamond"),
-    (89, "Master"), (99, "GrandMaster"), (100, "Challenger")
-]
-def get_rank(level: int) -> str:
-    if level <= 9:
-        return "언랭크"
-    if level == 100:
-        return "Challenger"
-    for max_lv, name in MAJOR_RANKS:
-        if level <= max_lv:
-            start = max_lv - 9
-            off = level - start
-            tier = "IV" if off <= 3 else "III" if off <= 6 else "II" if off <= 8 else "I"
-            return f"{name} {tier}"
-    return "언랭크"
-
-# ───── 음성 이탈 처리 ─────
+# ───── 음성 이탈 시 포인트 계산 함수 ─────
 def process_voice_leave(uid, leave_time):
-    join = user_join_times.pop(uid, None)
-    hist = user_mic_history.pop(uid, [])
-    if not join:
+    """
+    user_join_times와 user_mic_history에 남은 기록을 기반으로
+    포인트를 계산하여 user_points와 activity_xp에 반영하고 저장한다.
+    """
+    join_time = user_join_times.pop(uid, None)
+    mic_changes = user_mic_history.pop(uid, [])
+    if not join_time:
         return
-    hist.append((leave_time, hist[-1][1] if hist else False))
-    hist = [(t, m) for t, m in hist if t >= join]
-    total = 0.0
-    for (t1, on), (t2, _) in zip(hist, hist[1:]):
-        mins = (t2 - t1).total_seconds() / 60
-        total += mins * (POINT_RATE['on'] if on else POINT_RATE['off'])
-    earned = int(total)
+
+    # 마지막 기록으로 leave_time 추가
+    mic_changes.append((leave_time, mic_changes[-1][1] if mic_changes else False))
+    # join_time 이후의 기록만 남김
+    mic_changes = [(t, m) for t, m in mic_changes if t >= join_time]
+
+    total_points = 0.0
+    for i in range(len(mic_changes) - 1):
+        t1, mic_on = mic_changes[i]
+        t2, _ = mic_changes[i + 1]
+        minutes = (t2 - t1).total_seconds() / 60
+        total_points += minutes * (2.0 if mic_on else 1.0)
+    earned = int(total_points)
+
+    # 기존 포인트 불러오기
     load_points()
     user_points[uid] = user_points.get(uid, 0) + earned
     activity_xp[uid] = activity_xp.get(uid, 0) + earned
@@ -159,245 +144,152 @@ def process_voice_leave(uid, leave_time):
 async def on_voice_state_update(member, before, after):
     uid = str(member.id)
     now = datetime.datetime.utcnow()
+
+    # 새로운 사용자라면 닉네임 저장
     save_username(member)
-    prev, curr = before.channel, after.channel
-    if not prev and curr:
+
+    # before.channel 및 after.channel 비교
+    before_chan = before.channel
+    after_chan = after.channel
+
+    # 1) 완전 입장: before=None, after!=None
+    if before_chan is None and after_chan:
         user_join_times[uid] = now
         user_mic_history[uid] = [(now, not after.self_mute)]
-    elif prev and curr and prev.id != curr.id:
+
+    # 2) 채널 이동: before!=None, after!=None, 채널 ID 다름
+    elif before_chan and after_chan and before_chan.id != after_chan.id:
+        # 이전 채널 이탈 처리
         process_voice_leave(uid, now)
+        # 새 채널 입장 처리
         user_join_times[uid] = now
         user_mic_history[uid] = [(now, not after.self_mute)]
-    elif prev and curr and prev.id == curr.id:
-        user_mic_history.setdefault(uid, []).append((now, not after.self_mute))
-    elif prev and not curr:
+
+    # 3) 같은 채널 내부 마이크 상태 변화: before!=None, after!=None, 채널 ID 동일
+    elif before_chan and after_chan and before_chan.id == after_chan.id:
+        if uid in user_mic_history:
+            user_mic_history[uid].append((now, not after.self_mute))
+
+    # 4) 완전 이탈: before!=None, after=None
+    elif before_chan and after_chan is None:
         process_voice_leave(uid, now)
 
-# ───── 랭킹 ─────
+# ───── 랭킹 관련 명령어 ─────
 @bot.command()
 async def 랭킹(ctx):
     load_points()
     if not user_points:
-        return await ctx.send("📉 아직 데이터가 없습니다.")
-    top = sorted(user_points.items(), key=lambda x: x[1], reverse=True)[:10]
-    desc = "\n".join(f"**{i+1}.** <@{u}> — {p:,}포인트" for i, (u, p) in enumerate(top))
-    await ctx.send(embed=Embed(title="**🌞 TOP 10 랭킹**", description=desc, color=0xFFD700))
+        await ctx.send("📉 아직 데이터가 없습니다.")
+        return
 
-# ───── 평균 ─────
+    sorted_users = sorted(user_points.items(), key=lambda x: x[1], reverse=True)
+    top10 = sorted_users[:10]
+    description = "\n".join([f"**{i+1}.** <@{uid}> — {pt}점" for i, (uid, pt) in enumerate(top10)])
+
+    embed = discord.Embed(
+        title="🌞 TOP 10 랭킹",
+        description=description,
+        color=0xFFD700
+    )
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def 꼴찌(ctx):
+    load_points()
+    if not user_points or len(user_points) < 10:
+        await ctx.send("🔽 하위 10 유저를 볼 수 없습니다.")
+        return
+
+    sorted_users = sorted(user_points.items(), key=lambda x: x[1])
+    bottom10 = sorted_users[:10]
+    description = "\n".join([f"**{i+1}.** <@{uid}> — {pt}점" for i, (uid, pt) in enumerate(bottom10)])
+
+    embed = discord.Embed(
+        title="🌑 하위 10 랭킹",
+        description=description,
+        color=0xAAAAAA
+    )
+    await ctx.send(embed=embed)
+
 @bot.command()
 async def 평균(ctx):
     load_points()
     if not user_points:
-        return await ctx.send("📉 아직 데이터가 없습니다.")
+        await ctx.send("📉 아직 데이터가 없습니다.")
+        return
+
     total = sum(user_points.values())
-    cnt = len(user_points)
-    avg = total // cnt
-    desc = (
-        f"• **인원 수**: {cnt}명\n"
-        f"• **총합**: {total:,}점\n"
-        f"• **1인 평균**: {avg:,}점"
+    avg = total // len(user_points)
+
+    embed = discord.Embed(
+        title="📈 전체 평균 포인트",
+        description=(
+            f"• **인원 수**: {len(user_points)}명\n"
+            f"• **총합**: {total:,}점\n"
+            f"• **1인 평균**: {avg:,}점"
+        ),
+        color=0x00AAFF
     )
-    await ctx.send(embed=Embed(title="**📈 전체 평균 포인트**", description=desc, color=0x00AAFF))
+    await ctx.send(embed=embed)
 
 # ───── 포인트 & 레벨 정보 ─────
 @bot.command()
 async def 포인트(ctx):
-    load_points()
     uid = str(ctx.author.id)
-    act = activity_xp.get(uid, 0)
-    adm = admin_xp.get(uid, 0)
-    txp = act + adm
-    lvl, nxt = calculate_level(txp)
-    pts = user_points.get(uid, 0)
-    rank = next((i + 1 for i, (u, _) in enumerate(sorted(user_points.items(), key=lambda x: x[1], reverse=True)) if u == uid), None)
-    cur = sum(xp_for_next(i) for i in range(1, lvl))
-    prog = int((txp - cur) / xp_for_next(lvl) * 10)
-    bar = "▰" * prog + "▱" * (10 - prog)
-    e = Embed(title=f"**{ctx.author.display_name} 님의 포인트 & 레벨 정보**", color=0x55CCFF)
-    e.description = (
-        f"• 🏃🏻 레벨 : {get_rank(lvl)} ({lvl})\n"
-        f"  📈 진척도 : {bar}\n\n"
-        f"• 🔼 다음 레벨까지 : {nxt:,} 포인트\n"
-        f"• 📊 순위 : {rank}위 / {len(user_points)}명 중\n\n\n"
-        f"• 💰 총 포인트 : {pts:,} 포인트\n\n"
-        f"• 🎧 활동 포인트:\n    • 디코 활동 : {act:,} 포인트\n    • 관리자 지급 : {adm:,} 포인트\n    • 도박 획득 : {gamble_points.get(uid, 0):,} 포인트"
+    member = ctx.author
+
+    load_points()
+    load_bank()
+    # 활동·관리자 XP 불러오기 (메모리 상 이미 있거나 없으면 0)
+    activity = activity_xp.get(uid, 0)
+    admin = admin_xp.get(uid, 0)
+    total_xp = activity + admin
+
+    wallet = user_points.get(uid, 0)
+    bank = bank_data.get(uid, 0)
+    total_point = wallet + bank
+
+    # 레벨 계산
+    def calculate_level(xp):
+        thresholds = {1: 50, 2: 100, 3: 300, 4: 450, 5: 600, 6: 750, 7: 900, 8: 1100, 9: 1300, 10: float('inf')}
+        level = 0
+        for lvl, req in thresholds.items():
+            if xp >= req:
+                level = lvl
+                xp -= req
+            else:
+                next_xp = req - xp
+                break
+        else:
+            next_xp = 0
+        return level, next_xp
+
+    level, next_level_xp = calculate_level(total_xp)
+    sorted_users = sorted(user_points.items(), key=lambda x: x[1], reverse=True)
+    rank = next((i + 1 for i, (u, _) in enumerate(sorted_users) if u == uid), None)
+
+    embed = discord.Embed(
+        title=f"{member.display_name} 님의 포인트 & 레벨 정보",
+        description=(
+            f"• 🏃🏻 레벨 : {level}레벨\n"
+            f"• 🔼 다음 레벨까지 : {next_level_xp:,} 포인트\n"
+            f"• 📊 순위 : {rank}위 / {len(sorted_users)}명 중\n\n"
+            f"• 💰 총 자산 : 지갑 {wallet:,} + 은행 {bank:,} = {total_point:,} 포인트\n\n"
+            f"• 🎧 디스코드 활동 포인트 : {activity:,} 포인트\n"
+            f"• 🧧 관리자 지급 포인트 : {admin:,} 포인트"
+        ),
+        color=0x55CCFF
     )
-    await ctx.send(embed=e)
-    prev_lvl = user_levels.get(uid, 0)
-    if lvl > prev_lvl:
-        await ctx.send(f"💥 {ctx.author.display_name}님은 메카살인기의 축복을 받아 {prev_lvl} ➡️ {lvl} 레벨로 진화했습니다! ⚙️")
-    user_levels[uid] = lvl
+    await ctx.send(embed=embed)
 
-# ───── 출석 체크 ─────
-# 출석 보상 설정
-milestone_rewards = {
-    5: 50, 10: 100, 15: 150, 20: 200, 30: 300, 50: 500, 75: 750, 100: 1000
-}
+    # 레벨업 메시지
+    previous_level = user_levels.get(uid, 0)
+    if level > previous_level:
+        await ctx.send(f"💥 {member.display_name}님은 메카살인기의 축복을 받아 {previous_level} ➡️ {level} 레벨로 진화했습니다! ⚙️")
 
-# 병맛 giver 리스트
-givers = ["Margo", "지봄이", "노듀오", "리망쿠", "인영킴이", "영규", "슝슝이", "재앙이"]
+    user_levels[uid] = level
 
-# ───── 출석 체크 ─────
-@bot.command()
-async def 출석(ctx):
-    load_points()
-    uid = str(ctx.author.id)
-    today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d")
-
-    data["checkin_log"].setdefault(uid, [])
-    data["streak_log"].setdefault(uid, 0)
-    data["user_points"].setdefault(uid, 0)
-    data["activity_xp"].setdefault(uid, 0)
-
-    if today in data["checkin_log"][uid]:
-        return await ctx.send(f"❗ 이미 {today}에 출석하셨습니다.")
-
-    yesterday = (datetime.datetime.utcnow() + datetime.timedelta(hours=9) - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
-    if yesterday in data["checkin_log"][uid]:
-        data["streak_log"][uid] += 1
-    else:
-        data["streak_log"][uid] = 1
-
-    # 기본 출석 보상
-    base_reward = 50
-    bonus = 0
-
-    chance = random.randint(1, 100)
-    if chance <= 5:
-        bonus = 40
-    elif chance <= 30:
-        bonus = random.randint(1, 5)
-
-    total = base_reward + bonus
-    data["user_points"][uid] += total
-    data["activity_xp"][uid] += total
-    data["checkin_log"][uid].append(today)
-
-    total_checkins = len(data["checkin_log"][uid])
-    milestone_bonus = milestone_rewards.get(total_checkins, 0)
-    milestone_msg = ""
-
-    if milestone_bonus > 0:
-        data["user_points"][uid] += milestone_bonus
-        data["activity_xp"][uid] += milestone_bonus
-
-        giver = random.choice(givers)
-        meme_messages = [
-            f"{giver}가 튀어나와 포인트를 던지고 사라졌습니다! 🏃‍♂️💨",
-            f"{giver}가 '아 몰라~' 하고 포인트를 던졌습니다. 🤷‍♂️",
-            f"{giver}가 '이 정도면 만족?' 하며 {milestone_bonus}포인트를 던져줬습니다. 😏",
-            f"{giver}가 조용히 포인트를 밀어넣고 아무 일 없다는 듯 사라졌습니다. 🕶️"
-        ]
-        selected_meme = random.choice(meme_messages)
-        milestone_msg = f"🎯 누적 {total_checkins}일 출석 보상! {selected_meme}"
-
-    save_points()
-
-    # 최종 출력
-    message = (
-        f"📅 출석 완료 : 출쳌 {total}포인트를 획득했습니다!\n"
-        f"📖 누적 출석 일수: {total_checkins}일차 입니다!\n"
-        f"🔥 현재 연속 출석: {data['streak_log'][uid]}일차 유지중입니다!"
-    )
-    if milestone_bonus > 0:
-        message += f"\n{milestone_msg}"
-
-    await ctx.send(message)
-
-# ───── 출석 현황 ─────
-@bot.command()
-async def 출석현황(ctx):
-    load_points()
-    uid = str(ctx.author.id)
-
-    total_days = len(data["checkin_log"].get(uid, []))
-    streak_days = data["streak_log"].get(uid, 0)
-
-    next_milestone = None
-    for milestone in sorted(milestone_rewards.keys()):
-        if total_days < milestone:
-            next_milestone = milestone - total_days
-            break
-
-    message = f"📊 {ctx.author.display_name}님의 출석 현황\n"
-    message += f"총 출석일: {total_days}일\n"
-    message += f"연속 출석일: {streak_days}일\n"
-    if next_milestone:
-        message += f"다음 마일스톤까지 {next_milestone}일 남았습니다! 🔥"
-    else:
-        message += "최고 마일스톤 달성중입니다! 🎉"
-
-    await ctx.send(message)
-
-# ───── 월간 출석 랭킹 ─────
-@bot.command()
-async def 출석랭킹(ctx):
-    load_points()
-    now = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
-    this_month = now.strftime("%Y-%m")
-
-    monthly_counts = defaultdict(int)
-    for uid, dates in data["checkin_log"].items():
-        monthly_counts[uid] = sum(1 for d in dates if d.startswith(this_month))
-
-    ranking = sorted(monthly_counts.items(), key=lambda x: x[1], reverse=True)
-
-    message = f"🏆 {now.strftime('%Y년 %m월')} 출석 랭킹 🏆\n"
-    for idx, (uid, count) in enumerate(ranking[:10], 1):
-        try:
-            member = await ctx.guild.fetch_member(int(uid))
-            message += f"{idx}위: {member.display_name} - {count}일 출석\n"
-        except:
-            message += f"{idx}위: Unknown User - {count}일 출석\n"
-
-    await ctx.send(message)
-
-# ───── 관리자 지급 ─────
-@bot.command()
-async def 지급(ctx, member: discord.Member, 점수: int):
-    if ctx.author.id not in allowed_admin_ids:
-        return await ctx.send("🚫 관리자 전용 명령어입니다.")
-    load_points()
-    uid = str(member.id)
-    user_points[uid] = user_points.get(uid, 0) + 점수
-    admin_xp[uid] = admin_xp.get(uid, 0) + 점수
-    save_points()
-    with open(os.path.join(BASE_DIR, "admin_point_log.txt"), "a", encoding="utf-8") as f:
-        f.write(f"{ctx.author.display_name} → {member.display_name}: {점수}점\n")
-    await ctx.send(f"✅ {member.display_name}님에게 {점수}포인트 지급 완료.")
-
-# ───── 구걸 ─────
-@bot.command()
-async def 구걸(ctx):
-    load_points()
-    uid = str(ctx.author.id)
-    today = (datetime.datetime.utcnow() + datetime.timedelta(hours=9)).strftime("%Y-%m-%d")
-    if uid not in beg_log:
-        beg_log[uid] = []
-    if beg_log[uid].count(today) >= 5:
-        return await ctx.send(f"❗ 하루 5번까지만 구걸할 수 있어요! (이미 {beg_log[uid].count(today)}회 시도)")
-    success = random.random() < 0.85
-    if success:
-        gain = random.randint(10, 30)
-        user_points[uid] = user_points.get(uid, 0) + gain
-        msg = f"🙏 {ctx.author.display_name}님이 구걸해서 {gain}포인트를 받았습니다!"
-    else:
-        fail_msgs = [
-            "지나가던 인기가 침만 뱉고 갔습니다... 😢",
-            "창대곤듀가 \"포인트 없어!\" 라고 말했습니다... 💨",
-            "YESJ어르신이 지갑을 꺼내는 척만 했습니다... 🤥",
-            "길에서 일규박에게 무시당했습니다. 현실입니다... 🧍",
-            "침형님도 '없다'고 하셨습니다... 🕳️",
-            "코끼리가 '내가 다 쓸어갔다'라고 하더라고요… 🐘",
-            "유나대장이 슬쩍 가져갔다는 소문이… 😏",
-        ]
-        reason = random.choice(fail_msgs)
-        msg = f"{ctx.author.mention} ❌ 구걸 실패!\n{reason}"
-    beg_log[uid].append(today)
-    save_points()
-    await ctx.send(msg)
-
-# ───── 도박 ─────
+# ───── 도박 기능 ─────
 @bot.command()
 async def 도박(ctx, 배팅: int):
     load_points()
@@ -405,25 +297,24 @@ async def 도박(ctx, 배팅: int):
     mention = ctx.author.mention
 
     if 배팅 <= 0 or user_points.get(uid, 0) < 배팅:
-        return await ctx.send(f"{mention} ❌ 유효하지 않은 배팅 금액입니다.")
+        await ctx.send(f"{mention} ❌ 유효하지 않은 배팅 금액입니다.")
+        return
 
     user_points[uid] -= 배팅
-    chance = random.uniform(0, 100)  # 실수 기반으로 더 정확한 분포
+    chance = random.randint(1, 100)
     gain = 0
+    result_msg = ""
 
-    if chance < 58.5:
+    if chance <= 65:
         result_msg = f"💀 실패! {배팅:,}점 잃었습니다."
         gamble_losses[uid] = gamble_losses.get(uid, 0) + 배팅
-
-    elif chance < 94:  # 58.5 + 35.5
+    elif chance <= 90:
         gain = 배팅 * 2
         result_msg = f"✨ 2배 당첨! {gain:,}점 획득!"
-
-    elif chance < 99:  # 94 + 5
+    elif chance <= 98:
         gain = 배팅 * 3
         result_msg = f"🎉 3배 당첨! {gain:,}점 획득!"
-
-    else:  # 나머지 1%
+    else:
         gain = 배팅 * 10
         result_msg = f"🌟 10배 전설 당첨! {gain:,}점 획득!!"
 
@@ -432,111 +323,206 @@ async def 도박(ctx, 배팅: int):
         gamble_points[uid] = gamble_points.get(uid, 0) + gain
 
     save_points()
-    await ctx.send(f"{mention}님\n{result_msg}\n💰 보유 포인트: {user_points.get(uid, 0):,}점")
 
-@bot.command()
-async def 도박랭킹(ctx):
-    if not gamble_points:
-        return await ctx.send("📉 아직 도박 승리 기록이 없습니다.")
-
-    # 상위 10명 기준 정렬
-    top = sorted(gamble_points.items(), key=lambda x: x[1], reverse=True)[:10]
-
-    lines = []
-    for i, (uid, total_win) in enumerate(top, 1):
-        member = ctx.guild.get_member(int(uid))
-        name = member.display_name if member else f"유저({uid})"
-        lines.append(f"**{i}.** {name} — 🎰 {total_win:,} 포인트")
-
-    desc = "\n".join(lines)
-
-    embed = Embed(
-        title="**💸 도박으로 얻은 포인트 랭킹 TOP 10**",
-        description=desc,
-        color=0xF39C12  # 골드 톤
+    result_text = (
+        f"{mention}님\n"
+        f"{result_msg}\n"
+        f"💰 보유 포인트: {user_points.get(uid, 0):,}점"
     )
-    embed.set_footer(text="메카살인기 • 솔라리스")
-    await ctx.send(embed=embed)
+    await ctx.send(result_text)
 
 # ───── 슬롯머신 ─────
+slot_jackpot = 0
+slot_attempts = {}
+
 @bot.command()
 async def 슬롯(ctx):
     global slot_jackpot, slot_attempts
     load_points()
+
     uid = str(ctx.author.id)
-    bet = 10
+    bet = 5
+
     if user_points.get(uid, 0) < bet:
-        return await ctx.send("❌ 포인트 부족 (10점 필요)")
+        await ctx.send("❌ 포인트가 부족합니다. (5점 필요)")
+        return
+
+    # 베팅 차감 및 잭팟 누적
     user_points[uid] -= bet
     slot_jackpot += bet
     slot_attempts[uid] = slot_attempts.get(uid, 0) + 1
 
-    emojis = ["☀️", "🌙", "⭐", "🍀", "💣"]
+    jackpot_emojis = ["☀️", "🌙", "⭐", "🍀", "💣"]
     chance = random.random()
 
-    if chance < 0.005:  # 솔라 잭팟 0.5%
+    if chance < 0.01:
         result = ["☀️"] * 5
-    elif chance < 0.015:  # 다른 잭팟 1%
-        sym = random.choice(emojis[1:])
-        result = [sym] * 5
+    elif chance < 0.025:
+        symbol = random.choice(["🌙", "⭐", "🍀", "💣"])
+        result = [symbol] * 5
     else:
         while True:
-            result = [random.choice(emojis) for _ in range(5)]
+            result = [random.choice(jackpot_emojis) for _ in range(5)]
             if len(set(result)) > 1:
                 break
 
-    common = max(set(result), key=result.count)
-    cnt = result.count(common)
+    most_common = max(set(result), key=result.count)
+    match_count = result.count(most_common)
     lines = [f"🎰 결과 : {' '.join(result)}"]
 
-    if cnt == 5:
-        reward = int(slot_jackpot * 0.8)
+    if match_count == 5:
+        base_reward = int(slot_jackpot * 0.8)
         bonus_msg = ""
-        if common == "☀️":
-            reward += 500
+        is_solar = (most_common == "☀️")
+        if is_solar:
+            base_reward += 500
             bonus_msg = "• ☀️ **솔라잭팟!** 500포인트 추가 보너스!"
-        user_points[uid] += reward
-        pool = slot_jackpot - int(slot_jackpot * 0.8)
-        top2 = sorted(slot_attempts.items(), key=lambda x: x[1], reverse=True)
-        recip = [u for u, _ in top2 if u != uid][:2]
-        share = pool // len(recip) if recip else 0
-        dist = [f"<@{r}> (+{share:,}점)" for r in recip]
-        lines.append(f"• 🌟 {common} 5개 잭팟! 획득: {reward:,}점")
+
+        user_points[uid] += base_reward
+
+        # 20% 보너스 분배
+        bonus_pool = slot_jackpot - int(slot_jackpot * 0.8)
+        top_attempts = sorted(slot_attempts.items(), key=lambda x: x[1], reverse=True)
+        recipients = [u for u, _ in top_attempts if u != uid][:2]
+        share = bonus_pool // max(len(recipients), 1) if recipients else 0
+        distributed = []
+
+        for rid in recipients:
+            user_points[rid] = user_points.get(rid, 0) + share
+            distributed.append(f"<@{rid}> (+{share:,}점)")
+
+        lines.append(f"• 🌟 {most_common} 5개! {ctx.author.mention}님이 잭팟을 터뜨렸습니다!")
         if bonus_msg:
             lines.append(bonus_msg)
-        if dist:
-            lines.append(f"• 🎁 분배: {' / '.join(dist)}")
-        slot_jackpot = 1000 + sum(slot_attempts.values()) * bet
+        lines.append(f"• 🏆 당첨 보상 : {base_reward:,}점")
+        if distributed:
+            lines.append(f"• 🎁 보너스 분배 (20%) : {' / '.join(distributed)}")
+
+        slot_jackpot = 0
         slot_attempts.clear()
     else:
-        lines.append("• 💀 꽝! 잭팟 누적 중...")
-        lines.append(f"• 💰 남은 포인트: {user_points[uid]:,}점")
-        lines.append(f"• 💸 잭팟: {slot_jackpot:,}점")
+        lines.append("• 💀 꽝! 누적 상금은 계속 쌓입니다...")
+        lines.append(f"• 💰 남은 내 포인트 : {user_points[uid]:,}점")
+        lines.append(f"• 💸 누적 잭팟 : {slot_jackpot:,}점")
 
     save_points()
-    await ctx.send(embed=Embed(title="**[슬롯머신 결과]**", description="\n".join(lines), color=0xf1c40f))
+    embed = Embed(
+        title="**[슬롯머신 결과]**",
+        description="\n".join(lines),
+        color=0xf1c40f
+    )
+    await ctx.send(embed=embed)
 
-# ───── 보내기 ─────
+# ───── 보내기 기능 ─────
 @bot.command()
 async def 보내기(ctx, member: discord.Member, 금액: int):
     load_points()
     sender_id = str(ctx.author.id)
     receiver_id = str(member.id)
+
     if 금액 <= 0:
-        return await ctx.send("❌ 0보다 큰 금액을 입력하세요.")
+        await ctx.send("❌ 0보다 큰 금액을 입력하세요.")
+        return
+
     if sender_id == receiver_id:
-        return await ctx.send("❗ 자기 자신에게는 보낼 수 없습니다.")
+        await ctx.send("❗ 자기 자신에게는 보낼 수 없습니다.")
+        return
+
     if user_points.get(sender_id, 0) < 금액:
-        return await ctx.send("😢 포인트가 부족합니다.")
+        await ctx.send("😢 포인트가 부족합니다.")
+        return
+
     user_points[sender_id] -= 금액
     user_points[receiver_id] = user_points.get(receiver_id, 0) + 금액
     save_points()
-    await ctx.send(f"📤 <@{sender_id}>님이 <@{receiver_id}>님에게 {금액:,}점 보냈습니다!")
+
+    await ctx.send(f"📤 <@{sender_id}>님이 <@{receiver_id}>님에게 {금액:,}점을 보냈습니다!")
+
+# ───── 상점 출력 및 구매 ─────
+@bot.command()
+async def 상점(ctx):
+    items = read_json(ITEMS_FILE)
+    if not items:
+        await ctx.send("📦 상점에 등록된 아이템이 없습니다.")
+        return
+
+    msg = "\n".join([f"{item['name']} — {item['price']}점" for item in items])
+    await ctx.send(f"🛒 **상점 목록**\n{msg}")
+
+@bot.command()
+async def 구매(ctx, *, 아이템명):
+    load_points()
+    items = read_json(ITEMS_FILE)
+    if not items:
+        await ctx.send("❌ 상점 정보가 없습니다.")
+        return
+
+    item = next((i for i in items if i["name"] == 아이템명), None)
+    if not item:
+        await ctx.send("❗ 해당 아이템을 찾을 수 없습니다.")
+        return
+
+    uid = str(ctx.author.id)
+    price = item["price"]
+    if user_points.get(uid, 0) < price:
+        await ctx.send("😢 포인트가 부족합니다.")
+        return
+
+    user_points[uid] -= price
+    inv = read_json(INVENTORY_FILE)
+    inv.setdefault(uid, []).append(item["name"])
+    write_json(INVENTORY_FILE, inv)
+
+    save_points()
+    await ctx.send(f"🎉 `{item['name']}` 아이템을 구매했습니다!")
+
+# ───── 포인트 기록 저장 및 다운로드 ─────
+@bot.command()
+async def 기록저장(ctx):
+    load_points()
+    load_point_log()
+    today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+
+    point_log[today] = {}
+    for uid, pts in user_points.items():
+        point_log[today][uid] = {
+            "total": pts,
+            "activity": activity_xp.get(uid, 0),
+            "gamble": gamble_points.get(uid, 0)
+        }
+
+    save_point_log()
+    await ctx.send(f"📦 {today} 기준 포인트 기록이 저장되었습니다!")
+
+@bot.command()
+async def 기록다운(ctx, 월: str):
+    load_point_log()
+    filtered = {date: data for date, data in point_log.items() if date.startswith(월)}
+    if not filtered:
+        await ctx.send(f"❌ '{월}' 에 해당하는 기록이 없습니다.")
+        return
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["날짜", "유저ID", "총합", "활동점수", "도박점수"])
+    for date, users in filtered.items():
+        for uid, vals in users.items():
+            writer.writerow([date, uid, vals.get("total", 0), vals.get("activity", 0), vals.get("gamble", 0)])
+
+    buffer.seek(0)
+    file = discord.File(fp=io.BytesIO(buffer.read().encode()), filename=f"포인트기록_{월}.csv")
+    await ctx.send(file=file)
 
 # ───── 전체 초기화 (관리자 전용) ─────
 @bot.command()
-@is_admin()
 async def 전체초기화(ctx):
+    if ctx.author.id not in allowed_admin_ids:
+        await ctx.send("🚫 이 명령어는 등록된 관리자만 사용할 수 있습니다.")
+        return
+
+    global user_points, activity_xp, admin_xp, gamble_points, gamble_losses, user_levels
+    global checkin_log, point_log, daily_gamble_log, slot_jackpot, slot_attempts, bank_data, crime_log
+
     user_points.clear()
     activity_xp.clear()
     admin_xp.clear()
@@ -545,81 +531,289 @@ async def 전체초기화(ctx):
     user_levels.clear()
     checkin_log.clear()
     point_log.clear()
-    beg_log.clear()
-    slot_attempts.clear()
-    global slot_jackpot
+    daily_gamble_log.clear()
     slot_jackpot = 0
+    slot_attempts.clear()
+    bank_data.clear()
+    crime_log.clear()
+
     write_json(POINTS_FILE, {})
     write_json(POINT_LOG_FILE, {})
+    write_json(BANK_FILE, {})
     write_json(INVENTORY_FILE, {})
     write_json(ITEMS_FILE, {})
     write_json(USERS_FILE, {})
-    await ctx.send("🔄 모든 유저 데이터 초기화 완료.")
+    write_json(CRIME_LOG_FILE, {})
 
-# ───── 재능 상점 가격 모듈 ─────
-TALENT_THEME_PRICING = {
-    "game_coaching": 5000,
-    "labor_hiring": 1000,
-    "design_art": 10000,
-    "writing": 1000,
-    "music_production": 20000,
-    "video_editing": 20000,
-    "misc": 1000
-}
+    await ctx.send("🔄 모든 유저 데이터가 초기화되었습니다. (포인트, 레벨, 기록 등)")
 
-def calculate_talent_price(theme: str, duration_min: int) -> int:
-    return int(TALENT_THEME_PRICING.get(theme, 0) * (duration_min / 60.0))
+# ───── 출석 체크 기능 ─────
+@bot.command()
+async def 출석(ctx):
+    load_points()
+    uid = str(ctx.author.id)
+    now_kst = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
+    date_key = now_kst.strftime("%Y-%m-%d")
+
+    if uid not in checkin_log:
+        checkin_log[uid] = []
+
+    if date_key in checkin_log[uid]:
+        await ctx.send(f"❗ 이미 {date_key}에 출석하셨습니다.")
+        return
+
+    base_reward = 10
+    bonus = 0
+    bonus_msg = ""
+
+    chance = random.randint(1, 100)
+    if chance <= 5:
+        bonus = 40
+        bonus_msg = "💥 당신의 출석은 메카살인기의 심장을 깨웠습니다.\n🎉 대박! 추가로 40포인트와 경험치를 획득했습니다!"
+    elif chance <= 30:
+        bonus = random.randint(1, 5)
+        bonus_msg = f"✨ 보너스 {bonus}포인트와 경험치를 추가로 획득했습니다!"
+
+    total = base_reward + bonus
+    user_points[uid] = user_points.get(uid, 0) + total
+    activity_xp[uid] = activity_xp.get(uid, 0) + total
+    checkin_log[uid].append(date_key)
+    save_points()
+
+    if bonus_msg:
+        await ctx.send(f"📅 {date_key} 출석체크 완료! {base_reward}포인트를 획득했습니다.\n{bonus_msg}")
+    else:
+        await ctx.send(f"📅 {date_key} 출석체크 완료! {base_reward}포인트를 획득했습니다.")
+
+# ───── 관리자 수동 지급 ─────
+@bot.command()
+async def 지급(ctx, member: discord.Member, 점수: int):
+    if ctx.author.id not in allowed_admin_ids:
+        await ctx.send("🚫 이 명령어는 등록된 관리자만 사용할 수 있습니다.")
+        return
+
+    load_points()
+    uid = str(member.id)
+    user_points[uid] = user_points.get(uid, 0) + 점수
+    admin_xp[uid] = admin_xp.get(uid, 0) + 점수
+    save_points()
+
+    with open(os.path.join(BASE_DIR, "admin_point_log.txt"), "a", encoding="utf-8") as f:
+        f.write(f"{ctx.author.display_name} → {member.display_name}: {점수}점\n")
+
+    await ctx.send(f"✅ {member.display_name}님에게 {점수}포인트를 지급했습니다!")
 
 # ───── 도움말 ─────
 @bot.command()
 async def 도움말(ctx):
-    embed = Embed(
-        title="메카살인기 • 솔라리스 봇 도움말",
-        color=0xFFA500
+    embed = discord.Embed(
+        title="[(๑•̀ㅂ•́)و✧ 메카살인기 봇 명령어 설명서]",
+        description=(
+            "• **!출석** : 하루 1회 출석 체크 - 랜덤 보너스 포함\n"
+            "• **!포인트** : 내 포인트, 경험치, 순위, 레벨 확인\n"
+            "• **!슬롯** : 5포인트로 잭팟 도전\n"
+            "• **!도박 금액** : 포인트를 걸고 2~10배 도전\n"
+            "• **!보내기 @유저 금액** : 다른 유저에게 포인트 선물\n\n"
+            "**💡 포인트는 어떻게 얻나요?**\n"
+            "• 디스코드 음성 채널 접속 시 자동 누적\n"
+            "  └ 마이크 켜짐: 1분당 2 포인트\n"
+            "  └ 마이크 꺼짐: 1분당 1 포인트\n"
+            "• !출석으로 하루 1회 기본 10 포인트 + 랜덤 보너스\n"
+            "• 슬롯 / 도박 명령어로 포인트 획득 가능\n"
+            "• 친구에게 포인트 선물도 가능!\n\n"
+            "**🏆 포인트 랭킹은 어떻게 확인하나요?**\n"
+            "• !포인트 입력 시, 현재 내 순위가 자동으로 표시됩니다.\n"
+            "• 랭킹은 보유 포인트 기준으로 계산됩니다!"
+        ),
+        color=0xFF4444
     )
-    embed.add_field(
-        name="**💡 포인트 획득 방법**",
-        value="• 음성채널: 마이크 켜짐 2포인트/분, 꺼짐 1포인트/분",
-        inline=False
+    await ctx.send(embed=embed)
+
+# ───── 범죄 명령어 ─────
+MAX_CRIMES_PER_DAY = 5
+
+@bot.command()
+async def 범죄(ctx, 유형: str = None, 대상: discord.Member = None):
+    load_points()
+    load_bank()
+    load_crime_log()
+
+    uid = str(ctx.author.id)
+    now_ts = int(time.time())
+    today_date = datetime.datetime.utcnow().date()
+
+    # 오늘 자 범죄 기록만 남기기
+    crime_log.setdefault(uid, [])
+    crime_log[uid] = [
+        ts for ts in crime_log[uid]
+        if datetime.datetime.utcfromtimestamp(ts).date() == today_date
+    ]
+
+    if len(crime_log[uid]) >= MAX_CRIMES_PER_DAY:
+        await ctx.send("🚨 하루 5번까지만 범죄를 시도할 수 있어요.")
+        return
+
+    msg = ""
+    # 현재 유저 지갑 잔액
+    user_wallet = user_points.get(uid, 0)
+
+    if 유형 == "구걸":
+        if random.random() < 0.85:
+            gain = random.randint(10, 30)
+            user_points[uid] = user_wallet + gain
+            msg = f"🙏 {ctx.author.display_name}님이 구걸해서 {gain}포인트를 받았습니다!"
+        else:
+            fail_msgs = [
+                "지나가던 인기가 침만 뱉고 갔습니다... 😢",
+                "창대곤듀가 \"포인트 없어!\" 라고 말했습니다... 💨",
+                "YESJ어르신이 지갑을 꺼내는 척만 했습니다... 🤥",
+                "길에서 일규박에게 무시당했습니다. 현실입니다... 🧍",
+            ]
+            msg = f"❌ 구걸 실패! {random.choice(fail_msgs)}"
+
+    elif 유형 == "뺏기" and 대상:
+        target_id = str(대상.id)
+        target_wallet = user_points.get(target_id, 0)
+
+        # 30% 확률로 성공, 성공 시 총액의 10~30%를 탈취
+        if random.random() < 0.3 and target_wallet > 0:
+            percentage = random.uniform(0.1, 0.3)
+            stolen = int(target_wallet * percentage)
+            if stolen < 1:
+                stolen = 1
+
+            # 훔치기 성공
+            user_points[uid] = user_wallet + stolen
+            user_points[target_id] = max(target_wallet - stolen, 0)
+            msg = f"🎯 {ctx.author.display_name}님이 {대상.display_name}의 지갑에서 {stolen}포인트를 훔쳤습니다!"
+        else:
+            # 뺏기 실패 시 보유 포인트의 10% 손실 (최소 1포인트)
+            loss = max(int(user_wallet * 0.10), 1)
+            user_points[uid] = max(user_wallet - loss, 0)
+            msg = f"💥 뺏기 실패! {loss}포인트를 잃었습니다."
+
+    elif 유형 == "강탈" and 대상:
+        target_id = str(대상.id)
+        target_wallet = user_points.get(target_id, 0)
+
+        if random.random() < 0.05 and target_wallet > 0:
+            # 강탈 성공: 지갑 전체 탈취
+            stolen = target_wallet
+            user_points[uid] = user_wallet + stolen
+            user_points[target_id] = 0
+            msg = f"😈 {ctx.author.display_name}님이 {대상.display_name}의 지갑을 털어 {stolen}포인트를 빼앗았습니다!"
+        else:
+            # 강탈 실패 시 보유 포인트의 20% 손실 (최소 1포인트)
+            loss = max(int(user_wallet * 0.20), 1)
+            user_points[uid] = max(user_wallet - loss, 0)
+            msg = f"💥 강탈 실패! {loss}포인트를 잃었습니다."
+
+    elif 유형 == "은행털기":
+        # 전체 은행 잔액(자신 제외)
+        total_bank = sum(v for u, v in bank_data.items() if u != uid)
+
+        if random.random() < 0.01 and total_bank > 0:
+            # 은행털기 성공: 전체 은행 자산의 절반을 훔치기
+            steal_amount = total_bank // 2
+            for u in list(bank_data.keys()):
+                if u != uid:
+                    bank_data[u] = int(bank_data[u] * 0.5)
+            user_points[uid] = user_wallet + steal_amount
+            msg = f"💣 {ctx.author.display_name}님이 은행을 털어 {steal_amount:,}포인트를 훔쳤습니다!"
+        else:
+            # 은행털기 실패 시 보유 포인트의 30% 손실 (최소 1포인트)
+            loss = max(int(user_wallet * 0.30), 1)
+            user_points[uid] = max(user_wallet - loss, 0)
+            msg = f"💥 은행털기 실패! {loss}포인트를 잃었습니다."
+
+    else:
+        await ctx.send("사용 가능한 범죄 유형: `구걸`, `뺏기 @유저`, `강탈 @유저`, `은행털기`")
+        return
+
+    crime_log[uid].append(now_ts)
+    save_crime_log()
+    save_points()
+    save_bank()
+    await ctx.send(msg)
+
+
+# ───── 은행 명령어 ─────
+@bot.command()
+async def 은행(ctx, *args):
+    load_points()
+    load_bank()
+    uid = str(ctx.author.id)
+    wallet = user_points.get(uid, 0)
+    bank = bank_data.get(uid, 0)
+
+    action, amount = None, 0
+    if len(args) == 2:
+        if args[0].isdigit():
+            amount = int(args[0])
+            action = args[1]
+        elif args[1].isdigit():
+            action = args[0]
+            amount = int(args[1])
+    elif len(args) == 1 and args[0] in ["입금", "출금"]:
+        action = args[0]
+
+    if action == "입금":
+        if amount <= 0 or amount > wallet:
+            await ctx.send("❌ 지갑에 충분한 포인트가 없어요.")
+        else:
+            user_points[uid] = wallet - amount
+            bank_data[uid] = bank + amount
+            save_points()
+            save_bank()
+            await ctx.send(f"🏦 {amount}포인트를 은행에 입금했습니다.")
+    elif action == "출금":
+        if amount <= 0 or amount > bank:
+            await ctx.send("❌ 은행에 충분한 포인트가 없어요.")
+        else:
+            bank_data[uid] = bank - amount
+            user_points[uid] = wallet + amount
+            save_points()
+            save_bank()
+            await ctx.send(f"💼 {amount}포인트를 출금했습니다.")
+    else:
+        await ctx.send(
+            f"📊 <@{uid}>님의 자산 현황\n"
+            f"• 지갑: {wallet:,}포인트\n"
+            f"• 은행: {bank:,}포인트\n\n"
+            "예시: `!은행 입금 500`, `!은행 500 입금`, `!은행 출금 200`"
+        )
+
+
+@bot.command()
+async def 은행도움말(ctx):
+    embed = discord.Embed(
+        title="🏦 [솔라 은행 시스템 & 범죄 설명서]",
+        description=(
+            "**💼 은행이란?**\n"
+            "• 당신의 포인트를 안전하게 보관하는 금고입니다.\n"
+            "• 지갑 포인트는 도둑맞지만, 은행 포인트는 안전합니다.\n\n"
+            "**🛠 사용법 예시**\n"
+            "• `!은행` : 내 잔액 보기\n"
+            "• `!은행 입금 500` 또는 `!은행 500 입금`\n"
+            "• `!은행 출금 200` 또는 `!은행 200 출금`\n\n"
+            "**🚨 범죄로부터 보호하세요!**\n"
+            "다른 유저는 `!범죄` 명령어로 당신의 **지갑 포인트**를 훔칠 수 있어요!\n"
+            "• `!범죄 구걸` → 85% 확률로 10~30포인트 획득\n"
+            "• `!범죄 뺏기 @유저` → 30% 확률로 대상 지갑 보유 포인트의 10~30% 탈취\n"
+            "    • 실패 시 자신의 지갑 보유 포인트의 **10%** 손실\n"
+            "• `!범죄 강탈 @유저` → 5% 확률로 지갑 전체 탈취\n"
+            "    • 실패 시 자신의 지갑 보유 포인트의 **20%** 손실\n"
+            "• `!범죄 은행털기` → 전체 은행 자산의 절반을 훔치는 도전 (1% 확률)\n"
+            "    • 실패 시 자신의 지갑 보유 포인트의 **30%** 손실\n\n"
+            "**✅ 안전한 전략**\n"
+            "1. `!출석`, `!도박` 등으로 포인트 획득\n"
+            "2. `!은행 입금`으로 안전하게 보관\n"
+            "3. 사용할 때만 `!은행 출금`으로 꺼내쓰기"
+        ),
+        color=0x88CFFA
     )
-    embed.add_field(
-        name="**📅 출석 체크**",
-        value="• `!출석` 하루 1회(자정 기준) 기본 50포인트 + 랜덤 보너스",
-        inline=False
-    )
-    embed.add_field(
-        name="**💰 포인트 & 레벨 조회**",
-        value="• `!포인트` 내 포인트, XP, 레벨, 진척도 바, 순위 확인",
-        inline=False
-    )
-    embed.add_field(
-        name="**🏆 순위 및 통계**",
-        value="• `!랭킹` TOP 10 순위 / `!평균` 인원 수 · 총합 · 1인 평균",
-        inline=False
-    )
-    embed.add_field(
-        name="**🙏 구걸**",
-        value="• `!구걸` 하루 최대 5회, 성공 시 10~30포인트 획득 (XP 미획득)",
-        inline=False
-    )
-    embed.add_field(
-        name="**🎲 도박**",
-        value="• `!도박 [금액]` 65% 실패 · 25% ×2배 · 8% ×3배 · 2% ×10배 (포인트만)",
-        inline=False
-    )
-    embed.add_field(
-        name="**🎰 슬롯머신**",
-        value="• `!슬롯` 10포인트 참가, 기본 풀 1,000포인트 → 1.0% 솔라잭팟 / 1.5% 일반 잭팟 / 97.5% 꽝",
-        inline=False
-    )
-    embed.add_field(
-        name="**📤 포인트 전송**",
-        value="• `!보내기 @유저 [금액]` 다른 유저에게 포인트 선물",
-        inline=False
-    )
-    embed.set_footer(text="메카살인기 • 솔라리스")
     await ctx.send(embed=embed)
 
 # ───── 봇 실행 ─────
-print("🤖 메카살인기봇 준비 완료! 로그인 중...")
+print("🤖 디스코드 봇 실행 준비 완료! 로그인 중...")
 bot.run(TOKEN)
