@@ -68,14 +68,13 @@ def save_talent_store(store):
     with open(TALENT_STORE_FILE, 'w', encoding='utf-8') as f:
         json.dump(store, f, indent=2, ensure_ascii=False)
 
-# ───── 파서 안정화 ─────
+# ───── 파서 완전 안정화 ─────
 def extract_name_and_price(args):
     try:
         match = re.search(r"\((.*?)\)", args)
         if not match:
             return None, None
         name = match.group(1).strip()
-
         after_bracket = args[match.end():].strip()
         price_match = re.search(r"(\d+)", after_bracket)
         if not price_match:
@@ -499,7 +498,7 @@ async def 보내기(ctx, member: discord.Member, 금액: int):
     write_data(data)
     await ctx.send(f"📤 {ctx.author.display_name}님이 {member.display_name}님에게 {금액:,}포인트를 보냈습니다!")
 
-# ───── 재능상점 메인 명령어 ─────
+# ───── 재능상점 통합 명령어 ─────
 @bot.command()
 async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=None):
     user_id = str(ctx.author.id)
@@ -540,7 +539,7 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
             else:
                 return await ctx.send(f"❌ '{name_to_delete}' 상품을 찾을 수 없습니다.")
 
-        lines = [f"• {it['name']} — {it['price']}코인" for it in store[user_id]["items"]]
+        lines = [f"• {it['name']} — {it['price']}포인트" for it in store[user_id]["items"]]
         await ctx.send("**내 상점 상품 목록**\n" + "\n".join(lines))
 
     elif action == "구경":
@@ -553,7 +552,7 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
             member = ctx.guild.get_member(int(sid))
             if not member or not info['items']:
                 continue
-            item_list = "\n".join([f"{it['name']} — {it['price']}코인" for it in info['items']])
+            item_list = "\n".join([f"{it['name']} — {it['price']}포인트" for it in info['items']])
             embed.add_field(name=f"{member.display_name}님의 상점", value=item_list, inline=False)
 
         await ctx.send(embed=embed)
@@ -581,11 +580,11 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
         data['user_points'][sid] = data['user_points'].get(sid, 0) + price
         write_data(data)
 
-        await ctx.send(f"🎉 {seller.display_name}님의 상품 '{item_name}'을(를) {price}코인에 구매했습니다!")
+        await ctx.send(f"🎉 {seller.display_name}님의 상품 '{item_name}'을(를) {price}포인트에 구매했습니다!")
 
         try:
             dm_msg = (
-                f"📢 {ctx.author.display_name}님이 당신의 상품 **'{item_name}'**을(를) {price}코인에 구매했습니다!"
+                f"📢 {ctx.author.display_name}님이 당신의 상품 **'{item_name}'**을(를) {price}포인트에 구매했습니다!"
             )
             await seller.send(dm_msg)
         except discord.Forbidden:
@@ -601,12 +600,12 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
         )
         await ctx.send(usage)
 
-# ───── 깔끔한 임베드 도움말 ─────
+# ───── 깔끔 임베드 도움말 ─────
 @bot.command()
 async def 재능상점도움말(ctx):
     embed = discord.Embed(
         title="🌞 솔라 재능상점 도움말",
-        description="재능상점은 솔라리스 클랜원들이 보유한 다양한 재능을 클랜 내 화폐인 포인트 🪙로 사고 파는 거래 콘텐츠입니다.\n재능 판매 및 구매는 '솔라재능상점'에서 이루어집니다.",
+        description="재능상점은 솔라리스 클랜원들이 보유한 다양한 재능을 클랜 내 화폐인 포인트로 사고 파는 거래 콘텐츠입니다.\n재능 판매 및 구매는 '솔라재능상점'에서 이루어집니다.",
         color=0x00ffcc
     )
 
