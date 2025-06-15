@@ -31,11 +31,12 @@ def is_admin():
     return check(predicate)
 
 # ───── 전역 변수 초기화 ─────
+data = {} 
 user_join_times   = {}  # {uid: datetime}
 user_mic_history  = {}  # {uid: [(timestamp, mic_on), ...]}
 user_points       = {}  # dict[str, int]
 activity_xp       = {}  # dict[str, int]
-adm               = {}  # dict[str, int]
+admin_xp        = {}  # dict[str, int]
 gamble_points     = {}  # dict[str, int]
 gamble_losses     = {}  # dict[str, int]
 user_levels       = {}  # dict[str, int]
@@ -63,17 +64,25 @@ def write_json(path, data):
 
 # ───── 포인트 로드/저장 ─────
 def load_points():
-    global data
+    global data, user_points, activity_xp, admin_xp, checkin_log, streak_log
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f:
-            loaded_data = json.load(f)
-            data.update(loaded_data)
+            data = json.load(f)
     except FileNotFoundError:
+        data = {
+            "user_points": {},
+            "activity_xp": {},
+            "admin_xp": {},
+            "checkin_log": {},
+            "streak_log": {}
+        }
         save_points()
 
-def save_points():
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
+    user_points = data.get("user_points", {})
+    activity_xp = data.get("activity_xp", {})
+    admin_xp = data.get("admin_xp", {})
+    checkin_log = data.get("checkin_log", {})
+    streak_log = data.get("streak_log", {})
 
 # ───── 사용자 닉네임 저장 ─────
 def save_username(member):
