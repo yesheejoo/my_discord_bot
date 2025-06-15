@@ -481,20 +481,23 @@ async def 보내기(ctx, member: discord.Member, 금액: int):
     write_data(data)
     await ctx.send(f"📤 {ctx.author.display_name}님이 {member.display_name}님에게 {금액:,}포인트를 보냈습니다!")
 
-# ───── 재능상점 통합 명령어 ─────
-
-# 상품명 파싱 유틸 함수
+# ───── 상품명 파싱 유틸 (안정화 버전) ─────
 def extract_name_and_price(args):
-    match = re.search(r"\((.*?)\)", args)
-    if not match:
-        return None, None
-    name = match.group(1).strip()
-    price_str = args[match.end():].strip()
     try:
-        price = int(price_str)
-    except:
-        return name, None
-    return name, price
+        match = re.search(r"\((.*?)\)", args)
+        if not match:
+            return None, None
+        name = match.group(1).strip()
+
+        after_bracket = args[match.end():].strip()
+        price_match = re.search(r"(\d+)", after_bracket)
+        if not price_match:
+            return name, None
+        price = int(price_match.group(1))
+        return name, price
+    except Exception as e:
+        print(f"파싱 오류: {e}")
+        return None, None
 
 # ───── 재능상점 통합 명령어 ─────
 @bot.command()
@@ -603,46 +606,27 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
         )
         await ctx.send(usage)
 
-# ───── 재능상점 도움말 명령어 ─────
+# ───── 재능상점 도움말 명령어 (일반 출력 최적화) ─────
 @bot.command()
 async def 재능상점도움말(ctx):
-    embed = discord.Embed(
-        title="🌞 솔라 재능상점 도움말",
-        description="재능상점은 솔라리스 클랜원들이 보유한 다양한 재능을 클랜 내 화폐인 포인트 🪙로 사고 파는 거래 콘텐츠입니다.\n재능 판매 및 구매는 '솔라재능상점'에서 이루어집니다.",
-        color=0x00ffcc
+    msg = (
+        "**🌞 솔라 재능상점 도움말**\n"
+        "재능상점은 솔라리스 클랜원들이 보유한 다양한 재능을 클랜 내 화폐인 포인트 🪙로 사고 파는 거래 콘텐츠입니다.\n"
+        "재능 판매 및 구매는 '솔라재능상점'에서 이루어집니다.\n\n"
+        "**💸 판매하기**\n"
+        "• 👩🏻‍🎨 상품 등록 : `!재능상점 등록 (상품명) 가격`\n"
+        "• 📦 상품 목록 확인 : `!재능상점 관리`\n"
+        "• 🗑️ 상품 삭제 : `!재능상점 관리 (상품명) 삭제`\n\n"
+        "**🛍️ 구매하기**\n"
+        "• 🗂️ 상점 목록 보기 : `!재능상점 구경`\n"
+        "• 🎯 상품 구매 : `!재능상점 구매 @판매자 (상품명)`\n\n"
+        "**⚠️ 참고사항**\n"
+        "- 상품명은 반드시 괄호 `( )` 안에 작성\n"
+        "- 띄어쓰기 자유롭게 가능\n"
+        "- 구매 시 판매자 `@멘션` 필수\n"
+        "- 포인트 부족 시 구매 불가"
     )
-
-    embed.add_field(
-        name="💸 **판매하기**",
-        value=(
-            "• 👩🏻‍🎨 상품 등록 : `!재능상점 등록 (상품명) 가격`\n"
-            "• 📦 상품 목록 확인 : `!재능상점 관리`\n"
-            "• 🗑️ 상품 삭제 : `!재능상점 관리 (상품명) 삭제`"
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="🛍️ **구매하기**",
-        value=(
-            "• 🗂️ 상점 목록 보기 : `!재능상점 구경`\n"
-            "• 🎯 상품 구매 : `!재능상점 구매 @판매자 (상품명)`"
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="⚠️ **참고사항**",
-        value=(
-            "- 상품명은 반드시 괄호 `( )` 안에 작성\n"
-            "- 띄어쓰기 자유롭게 가능\n"
-            "- 구매 시 판매자 `@멘션` 필수\n"
-            "- 포인트 부족 시 구매 불가"
-        ),
-        inline=False
-    )
-
-    await ctx.send(embed=embed)
+    await ctx.send(msg)
 
 # ───── 랭킹 시스템 ─────
 @bot.command()
