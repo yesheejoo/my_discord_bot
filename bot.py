@@ -399,18 +399,18 @@ async def 슬롯(ctx):
             if len(set(final_result)) > 1:
                 break
 
-    # 🎰 애니메이션 시작 (속도 업그레이드)
+    # 🎰 애니메이션 시작 (초고속)
     rolling_msg = await ctx.send("🎰 슬롯머신 작동중...")
 
-    for i in range(6):  # 6회전 (살짝 길게)
+    for i in range(10):  # 빠른 10회전
         roll = [random.choice(EMOJIS) for _ in range(5)]
         display = f"🎰 | {' '.join(roll)}"
         await rolling_msg.edit(content=display)
-        await asyncio.sleep(0.3 - i * 0.03)  # 속도 가속도 빠르게
+        await asyncio.sleep(0.1 - i * 0.005)  # 휘리릭 느낌으로 가속
 
-    await asyncio.sleep(0.3)
+    await asyncio.sleep(0.2)
     await rolling_msg.edit(content=f"🎯 최종 결과 | {' '.join(final_result)}")
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(0.4)
 
     # 결과 계산
     common = max(set(final_result), key=final_result.count)
@@ -446,10 +446,9 @@ async def 슬롯(ctx):
         data['slot_attempts'] = {}
 
     else:
-        total_jackpot = BASE_JACKPOT
-        accumulated = data['slot_jackpot'] - BASE_JACKPOT
+        accumulated = max(0, data['slot_jackpot'] - BASE_JACKPOT)
         lines.append("💀 꽝! 다음 기회를 노려보세요!")
-        lines.append(f"💸 누적 잭팟 : {total_jackpot} + {accumulated:,} = {data['slot_jackpot']:,}포인트")
+        lines.append(f"💸 누적 잭팟 : {BASE_JACKPOT} + {accumulated:,} = {data['slot_jackpot']:,}포인트")
         lines.append(f"💰 남은 내 포인트 : {data['user_points'][uid]:,}포인트")
 
     write_data(data)
