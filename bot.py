@@ -6,6 +6,7 @@ import random
 import datetime
 import time
 import asyncio
+import re
 from collections import defaultdict
 
 import discord
@@ -454,6 +455,7 @@ async def 슬롯(ctx):
     )
     embed.set_thumbnail(url=ctx.author.display_avatar.url)
     await ctx.send(embed=embed)
+
 # ───── 보내기 시스템 ─────
 @bot.command()
 async def 보내기(ctx, member: discord.Member, 금액: int):
@@ -480,6 +482,21 @@ async def 보내기(ctx, member: discord.Member, 금액: int):
     await ctx.send(f"📤 {ctx.author.display_name}님이 {member.display_name}님에게 {금액:,}포인트를 보냈습니다!")
 
 # ───── 재능상점 통합 명령어 ─────
+
+# 상품명 파싱 유틸 함수
+def extract_name_and_price(args):
+    match = re.search(r"\((.*?)\)", args)
+    if not match:
+        return None, None
+    name = match.group(1).strip()
+    price_str = args[match.end():].strip()
+    try:
+        price = int(price_str)
+    except:
+        return name, None
+    return name, price
+
+# ───── 재능상점 통합 명령어 ─────
 @bot.command()
 async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=None):
     user_id = str(ctx.author.id)
@@ -492,13 +509,12 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
             store[user_id] = {"items": []}
 
         if not args:
-            return await ctx.send("❗ 등록 형식: !재능상점 등록 상품이름 가격")
+            return await ctx.send("❗ 등록 형식: !재능상점 등록 (상품명) 가격")
 
-        parts = args.split()
-        if len(parts) < 2:
-            return await ctx.send("❗ 등록 형식: !재능상점 등록 상품이름 가격")
+        name, price = extract_name_and_price(args)
+        if not name or price is None:
+            return await ctx.send("❗ 등록 형식: !재능상점 등록 (상품명) 가격")
 
-        name, price = parts[0], int(parts[1])
         store[user_id]["items"].append({"name": name, "price": price})
         save_talent_store(store)
         await ctx.send(f"✅ 상품 '{name}'이(가) 등록되었습니다. 가격: {price}코인")
@@ -509,15 +525,19 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
             return await ctx.send("📦 등록된 상품이 없습니다.")
 
         if args and args.endswith(" 삭제"):
-            nm = args[:-3].strip()
+            name_match = re.search(r"\((.*?)\)", args)
+            if not name_match:
+                return await ctx.send("❗ 삭제 형식: !재능상점 관리 (상품명) 삭제")
+
+            name_to_delete = name_match.group(1).strip()
             before = len(store[user_id]["items"])
-            store[user_id]["items"] = [it for it in store[user_id]["items"] if it["name"] != nm]
+            store[user_id]["items"] = [it for it in store[user_id]["items"] if it["name"] != name_to_delete]
             save_talent_store(store)
 
             if len(store[user_id]["items"]) < before:
-                return await ctx.send(f"🗑️ 상품 '{nm}'이(가) 삭제되었습니다.")
+                return await ctx.send(f"🗑️ 상품 '{name_to_delete}'이(가) 삭제되었습니다.")
             else:
-                return await ctx.send(f"❌ '{nm}' 상품을 찾을 수 없습니다.")
+                return await ctx.send(f"❌ '{name_to_delete}' 상품을 찾을 수 없습니다.")
 
         lines = [f"• {it['name']} — {it['price']}코인" for it in store[user_id]["items"]]
         await ctx.send("**내 상점 상품 목록**\n" + "\n".join(lines))
@@ -541,27 +561,29 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
     # 상품 구매
     elif action == "구매" and seller and args:
         sid = str(seller.id)
-        item_name = args.strip()
+        match = re.search(r"\((.*?)\)", args)
+        if not match:
+            return await ctx.send("❗ 구매 형식: !재능상점 구매 @판매자 (상품명)")
+
+        item_name = match.group(1).strip()
 
         if sid not in store:
             return await ctx.send("❌ 판매자를 찾을 수 없습니다.")
 
-        match = next((it for it in store[sid]["items"] if it["name"] == item_name), None)
-        if not match:
+        match_item = next((it for it in store[sid]["items"] if it["name"] == item_name), None)
+        if not match_item:
             return await ctx.send("❌ 해당 상품을 찾을 수 없습니다.")
 
-        price = match["price"]
+        price = match_item["price"]
         if data['user_points'].get(user_id, 0) < price:
             return await ctx.send("😢 포인트가 부족합니다.")
 
-        # 포인트 이동 처리
         data['user_points'][user_id] -= price
         data['user_points'][sid] = data['user_points'].get(sid, 0) + price
         write_data(data)
 
         await ctx.send(f"🎉 {seller.display_name}님의 상품 '{item_name}'을(를) {price}코인에 구매했습니다!")
 
-        # DM 알림
         try:
             dm_msg = (
                 f"📢 {ctx.author.display_name}님이 당신의 상품 **'{item_name}'**을(를) {price}코인에 구매했습니다!"
@@ -574,10 +596,10 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
     else:
         usage = (
             "**사용법:**\n"
-            "`!재능상점 등록 상품이름 가격`\n"
-            "`!재능상점 관리 [상품이름 삭제]`\n"
+            "`!재능상점 등록 (상품명) 가격`\n"
+            "`!재능상점 관리 [(상품명) 삭제]`\n"
             "`!재능상점 구경`\n"
-            "`!재능상점 구매 @판매자 상품이름`"
+            "`!재능상점 구매 @판매자 (상품명)`"
         )
         await ctx.send(usage)
 
@@ -585,44 +607,36 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
 @bot.command()
 async def 재능상점도움말(ctx):
     embed = discord.Embed(
-        title="📖 재능상점 이용 가이드",
-        description="재능상점 판매 및 구매 기능 사용법입니다.",
+        title="🌞 솔라 재능상점 도움말",
+        description="재능상점은 솔라리스 클랜원들이 보유한 다양한 재능을 클랜 내 화폐인 포인트 🪙로 사고 파는 거래 콘텐츠입니다.\n재능 판매 및 구매는 '솔라재능상점'에서 이루어집니다.",
         color=0x00ffcc
     )
 
     embed.add_field(
-        name="🛒 판매하기",
+        name="💸 **판매하기**",
         value=(
-            "**상품 등록:**\n"
-            "`!재능상점 등록 상품이름 가격`\n"
-            "예: `!재능상점 등록 디자인상담 500`\n\n"
-            "**상품 목록 확인:**\n"
-            "`!재능상점 관리`\n\n"
-            "**상품 삭제:**\n"
-            "`!재능상점 관리 상품이름 삭제`\n"
-            "예: `!재능상점 관리 디자인상담 삭제`"
+            "• 👩🏻‍🎨 상품 등록 : `!재능상점 등록 (상품명) 가격`\n"
+            "• 📦 상품 목록 확인 : `!재능상점 관리`\n"
+            "• 🗑️ 상품 삭제 : `!재능상점 관리 (상품명) 삭제`"
         ),
         inline=False
     )
 
     embed.add_field(
-        name="🎯 구매하기",
+        name="🛍️ **구매하기**",
         value=(
-            "**상점 목록 보기:**\n"
-            "`!재능상점 구경`\n\n"
-            "**상품 구매:**\n"
-            "`!재능상점 구매 @판매자 상품이름`\n"
-            "예: `!재능상점 구매 @디자인님 디자인상담`"
+            "• 🗂️ 상점 목록 보기 : `!재능상점 구경`\n"
+            "• 🎯 상품 구매 : `!재능상점 구매 @판매자 (상품명)`"
         ),
         inline=False
     )
 
     embed.add_field(
-        name="⚠️ 참고사항",
+        name="⚠️ **참고사항**",
         value=(
-            "- 상품명은 한 단어 사용 권장 (띄어쓰기 주의)\n"
-            "- 판매자 `@멘션` 필수\n"
-            "- 구매 시 포인트 차감 및 적립\n"
+            "- 상품명은 반드시 괄호 `( )` 안에 작성\n"
+            "- 띄어쓰기 자유롭게 가능\n"
+            "- 구매 시 판매자 `@멘션` 필수\n"
             "- 포인트 부족 시 구매 불가"
         ),
         inline=False
