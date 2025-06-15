@@ -629,33 +629,159 @@ async def 도움말(ctx):
     )
     await ctx.send(embed=embed)
 
+# ───── 범죄 명령어 ─────
+MAX_CRIMES_PER_DAY = 5
+
+@bot.command()
+async def 범죄(ctx, 유형: str = None, 대상: discord.Member = None):
+    load_points()
+    load_bank()
+    load_crime_log()
+
+    uid = str(ctx.author.id)
+    now_ts = int(time.time())
+    today_date = datetime.datetime.utcnow().date()
+
+    # 오늘 자 범죄 기록만 남기기
+    crime_log.setdefault(uid, [])
+    crime_log[uid] = [
+        ts for ts in crime_log[uid]
+        if datetime.datetime.utcfromtimestamp(ts).date() == today_date
+    ]
+
+    if len(crime_log[uid]) >= MAX_CRIMES_PER_DAY:
+        await ctx.send("🚨 하루 5번까지만 범죄를 시도할 수 있어요.")
+        return
+
+    msg = ""
+    # 현재 유저 지갑 잔액
+    user_wallet = user_points.get(uid, 0)
+
+    if 유형 == "구걸":
+        if random.random() < 0.85:
+            gain = random.randint(10, 30)
+            user_points[uid] = user_wallet + gain
+            msg = f"🙏 {ctx.author.display_name}님이 구걸해서 {gain}포인트를 받았습니다!"
+        else:
+            fail_msgs = [
+                "지나가던 인기가 침만 뱉고 갔습니다... 😢",
+                "창대곤듀가 \"포인트 없어!\" 라고 말했습니다... 💨",
+                "YESJ어르신이 지갑을 꺼내는 척만 했습니다... 🤥",
+                "길에서 일규박에게 무시당했습니다. 현실입니다... 🧍",
+            ]
+            msg = f"❌ 구걸 실패! {random.choice(fail_msgs)}"
+
+    elif 유형 == "뺏기" and 대상:
+        target_id = str(대상.id)
+        target_wallet = user_points.get(target_id, 0)
+
+        # 30% 확률로 성공, 성공 시 총액의 10~30%를 탈취
+        if random.random() < 0.3 and target_wallet > 0:
+            percentage = random.uniform(0.1, 0.3)
+            stolen = int(target_wallet * percentage)
+            if stolen < 1:
+                stolen = 1
+
+            # 훔치기 성공
+            user_points[uid] = user_wallet + stolen
+            user_points[target_id] = max(target_wallet - stolen, 0)
+            msg = f"🎯 {ctx.author.display_name}님이 {대상.display_name}의 지갑에서 {stolen}포인트를 훔쳤습니다!"
+        else:
+            # 뺏기 실패 시 보유 포인트의 10% 손실 (최소 1포인트)
+            loss = max(int(user_wallet * 0.10), 1)
+            user_points[uid] = max(user_wallet - loss, 0)
+            msg = f"💥 뺏기 실패! {loss}포인트를 잃었습니다."
+
+    elif 유형 == "강탈" and 대상:
+        target_id = str(대상.id)
+        target_wallet = user_points.get(target_id, 0)
+
+        if random.random() < 0.05 and target_wallet > 0:
+            # 강탈 성공: 지갑 전체 탈취
+            stolen = target_wallet
+            user_points[uid] = user_wallet + stolen
+            user_points[target_id] = 0
+            msg = f"😈 {ctx.author.display_name}님이 {대상.display_name}의 지갑을 털어 {stolen}포인트를 빼앗았습니다!"
+        else:
+            # 강탈 실패 시 보유 포인트의 20% 손실 (최소 1포인트)
+            loss = max(int(user_wallet * 0.20), 1)
+            user_points[uid] = max(user_wallet - loss, 0)
+            msg = f"💥 강탈 실패! {loss}포인트를 잃었습니다."
+
+    elif 유형 == "은행털기":
+        # 전체 은행 잔액(자신 제외)
+        total_bank = sum(v for u, v in bank_data.items() if u != uid)
+
+        if random.random() < 0.01 and total_bank > 0:
+            # 은행털기 성공: 전체 은행 자산의 절반을 훔치기
+            steal_amount = total_bank // 2
+            for u in list(bank_data.keys()):
+                if u != uid:
+                    bank_data[u] = int(bank_data[u] * 0.5)
+            user_points[uid] = user_wallet + steal_amount
+            msg = f"💣 {ctx.author.display_name}님이 은행을 털어 {steal_amount:,}포인트를 훔쳤습니다!"
+        else:
+            # 은행털기 실패 시 보유 포인트의 30% 손실 (최소 1포인트)
+            loss = max(int(user_wallet * 0.30), 1)
+            user_points[uid] = max(user_wallet - loss, 0)
+            msg = f"💥 은행털기 실패! {loss}포인트를 잃었습니다."
+
+    else:
+        await ctx.send("사용 가능한 범죄 유형: `구걸`, `뺏기 @유저`, `강탈 @유저`, `은행털기`")
+        return
+
+    crime_log[uid].append(now_ts)
+    save_crime_log()
+    save_points()
+    save_bank()
+    await ctx.send(msg)
+
 
 # ───── 은행 명령어 ─────
 @bot.command()
-@commands.has_permissions(administrator=True)
-async def 은행(ctx):
+async def 은행(ctx, *args):
     load_points()
     load_bank()
+    uid = str(ctx.author.id)
+    wallet = user_points.get(uid, 0)
+    bank = bank_data.get(uid, 0)
 
-    total_users = 0
-    total_amount = 0
+    action, amount = None, 0
+    if len(args) == 2:
+        if args[0].isdigit():
+            amount = int(args[0])
+            action = args[1]
+        elif args[1].isdigit():
+            action = args[0]
+            amount = int(args[1])
+    elif len(args) == 1 and args[0] in ["입금", "출금"]:
+        action = args[0]
 
-    for uid, bank_balance in bank_data.items():
-        if bank_balance > 0:
-            user_points[uid] = user_points.get(uid, 0) + bank_balance
-            total_amount += bank_balance
-            bank_data[uid] = 0
-            total_users += 1
-
-    save_points()
-    save_bank()
-
-    await ctx.send(f"💼 전체 출금 완료: {total_users}명의 유저로부터 총 {total_amount:,}포인트 출금하여 지갑으로 이체했습니다.")
-
-@은행.error
-async def 은행_error(ctx, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send("❌ 이 명령어는 관리자만 사용할 수 있습니다.")
+    if action == "입금":
+        if amount <= 0 or amount > wallet:
+            await ctx.send("❌ 지갑에 충분한 포인트가 없어요.")
+        else:
+            user_points[uid] = wallet - amount
+            bank_data[uid] = bank + amount
+            save_points()
+            save_bank()
+            await ctx.send(f"🏦 {amount}포인트를 은행에 입금했습니다.")
+    elif action == "출금":
+        if amount <= 0 or amount > bank:
+            await ctx.send("❌ 은행에 충분한 포인트가 없어요.")
+        else:
+            bank_data[uid] = bank - amount
+            user_points[uid] = wallet + amount
+            save_points()
+            save_bank()
+            await ctx.send(f"💼 {amount}포인트를 출금했습니다.")
+    else:
+        await ctx.send(
+            f"📊 <@{uid}>님의 자산 현황\n"
+            f"• 지갑: {wallet:,}포인트\n"
+            f"• 은행: {bank:,}포인트\n\n"
+            "예시: `!은행 입금 500`, `!은행 500 입금`, `!은행 출금 200`"
+        )
 
 
 @bot.command()
