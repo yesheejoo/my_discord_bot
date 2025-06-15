@@ -196,13 +196,13 @@ async def 포인트(ctx):
     )
     await ctx.send(embed=embed)
 
-# ───── 관리자 수동 지금 ─────
+# ───── 관리자 수동 지급 ─────
 allowed_admin_ids = [518697602774990859, 1335240110358265967]
 
 @bot.command()
-async def 지금(ctx, member: discord.Member, 점수: int):
+async def 지급(ctx, member: discord.Member, 점수: int):
     if ctx.author.id not in allowed_admin_ids:
-        await ctx.send("🚫 관리자만 사용 가능.")
+        await ctx.send("🚫 관리자만 사용 가능합니다")
         return
 
     data = read_data()
@@ -211,7 +211,7 @@ async def 지금(ctx, member: discord.Member, 점수: int):
     data['admin_xp'][uid] = data['admin_xp'].get(uid, 0) + 점수
 
     write_data(data)
-    await ctx.send(f"✅ {member.display_name}님에게 {점수}포인트 지금 완료.")
+    await ctx.send(f"✅ {member.display_name}님에게 {점수}포인트 지급 완료!👍🏻")
 
 # ───── 구걸 시스템 ─────
 @bot.command()
