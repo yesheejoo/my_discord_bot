@@ -270,7 +270,7 @@ async def 구걸(ctx):
             "창대곤듀가 \"포인트 없어!\" 라고 말했습니다... 💨",
             "YESJ어르신이 지갑을 끝내는 척만 했습니다... 🤥",
             "길에서 일규박에게 무시당했습니다. 현실입니다... 🧰",
-            "침형님도 '포인트 없다'고 했습니다... 🕳️",
+            "침형님도 '포인트 없다'고 했습니다... 😇",
             "코끼리가 '내가 다 쓸어갔다'라고 했습니다… 🐘",
             "유나대장이 슬쩍 가져갔다는 소문이… 😏",
         ]
@@ -358,13 +358,12 @@ async def 도박(ctx, 배팅: int):
     await ctx.send(f"{ctx.author.mention}\n{result_msg}\n💰 현재 보유 포인트: {data['user_points'][uid]:,}점")
 
 # ───── 슬롯머신 시스템 ─────
-# 기본 설정 상수
 BASE_JACKPOT = 1000
 BET_AMOUNT = 10
 JACKPOT_REWARD_RATIO = 0.8
 SOLAR_JACKPOT_BONUS = 500
-SOLAR_JACKPOT_CHANCE = 0.005  # 0.5%
-OTHER_JACKPOT_CHANCE = 0.015  # 1.5% (0.5~1.5% 구간)
+SOLAR_JACKPOT_CHANCE = 0.005
+OTHER_JACKPOT_CHANCE = 0.015
 
 EMOJIS = ["☀️", "🌙", "⭐", "🍀", "💣"]
 
@@ -388,7 +387,7 @@ async def 슬롯(ctx):
     if chance < SOLAR_JACKPOT_CHANCE:
         result = ["☀️"] * 5
     elif chance < OTHER_JACKPOT_CHANCE:
-        sym = random.choice(EMOJIS[1:])  # ☀️ 제외
+        sym = random.choice(EMOJIS[1:])  
         result = [sym] * 5
     else:
         while True:
@@ -400,7 +399,6 @@ async def 슬롯(ctx):
     cnt = result.count(common)
     lines = [f"🎰 : {' '.join(result)}"]
 
-    # 잭팟 당첨 처리
     if cnt == 5:
         reward = int(data['slot_jackpot'] * JACKPOT_REWARD_RATIO)
         bonus_msg = ""
@@ -412,7 +410,6 @@ async def 슬롯(ctx):
         data['user_points'][uid] += reward
         pool = data['slot_jackpot'] - reward
 
-        # 잭팟 분배
         top2 = sorted(data['slot_attempts'].items(), key=lambda x: x[1], reverse=True)
         recip = [u for u, _ in top2 if u != uid][:2]
         share = pool // len(recip) if recip else 0
@@ -424,23 +421,23 @@ async def 슬롯(ctx):
         if dist:
             lines.append(f"• 🎁 분배: {' / '.join(dist)}")
 
-        # 잭팟 초기화
         data['slot_jackpot'] = BASE_JACKPOT + sum(data['slot_attempts'].values()) * BET_AMOUNT
         data['slot_attempts'] = {}
 
     else:
-        # 꽝일 때 결과 출력
+        base_plus = data['slot_jackpot'] - BASE_JACKPOT
         lines.append("• 💀 꽝! 누적 상금은 계속 쌓입니다...")
-        lines.append(f"• 💸 누적 잭팟 : {data['slot_jackpot']:,}점")
-        lines.append(f"• 💰 @남은 내 포인트 : {data['user_points'][uid]:,}점")
+        lines.append(f"• 💸 누적 잭팟 : {BASE_JACKPOT} + {base_plus:,}점")
+        lines.append(f"• 💰 남은 내 포인트 : {data['user_points'][uid]:,}점")
 
-    # 결과 출력
     write_data(data)
+
     embed = Embed(
-        title=f"**[@{ctx.author.display_name}님의 슬롯머신 결과]**",
+        title=f"**[{ctx.author.display_name}님의 슬롯머신 결과]**",
         description="\n".join(lines),
         color=0xf1c40f
     )
+    embed.set_thumbnail(url=ctx.author.display_avatar.url)
     await ctx.send(embed=embed)
 
 # ───── 보내기 시스템 ─────
