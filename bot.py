@@ -201,27 +201,33 @@ async def 포인트(ctx):
 
     total_activity = data['activity_xp'].get(uid, 0)
     total_admin = data['admin_xp'].get(uid, 0)
+    total_gamble = data['gamble_points'].get(uid, 0)
     total_xp = total_activity + total_admin
 
     lvl, remain = calculate_level(total_xp)
     cur_xp = total_xp - sum(xp_for_next(i) for i in range(1, lvl))
     prog = int(cur_xp / xp_for_next(lvl) * 10)
-    bar = "▰" * prog + "▱" * (10 - prog)
+    
+    bar = "🟩" * prog + "⬛" * (10 - prog)
 
     pts = data['user_points'].get(uid, 0)
-    rank = next((i+1 for i, (u, _) in enumerate(sorted(data['user_points'].items(), key=lambda x: x[1], reverse=True)) if u == uid), None)
+    rank = next((i+1 for i, (u, _) in enumerate(
+        sorted(data['user_points'].items(), key=lambda x: x[1], reverse=True)) if u == uid), None)
 
     embed = Embed(title=f"{ctx.author.display_name}님의 포인트 & 레벨 정보", color=0x55CCFF)
     embed.description = (
+        f"• 📈 진척도 : {bar}\n\n"
         f"• 🏃🏻 레벨 : {get_rank(lvl)} ({lvl})\n"
-        f"  📈 진척도 : {bar}\n\n"
         f"• 🔼 다음 레벨까지 : {remain:,} 포인트\n"
         f"• 📊 전체 랭킹 : {rank}위 / {len(data['user_points'])}명 중\n\n"
-        f"• 💰 총 보유 포인트 : {pts:,} 포인트\n\n"
-        f"• 🎧 획득 포인트 내역:\n"
+        f"• 💰 총 보유 포인트 : {pts:,} 포인트\n"
         f"   └ 활동 포인트 : {total_activity:,}\n"
-        f"   └ 관리자 지급 : {total_admin:,}"
+        f"   └ 관리자 지급 : {total_admin:,}\n"
+        f"   └ 도박 포인트 : {total_gamble:,}"
     )
+
+    embed.set_thumbnail(url=ctx.author.display_avatar.url)
+
     await ctx.send(embed=embed)
 
 # ───── 관리자 수동 지급 ─────
