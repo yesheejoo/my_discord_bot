@@ -375,16 +375,18 @@ async def 슬롯(ctx):
     data = read_data()
     uid = str(ctx.author.id)
 
+    # 포인트 확인
     if data['user_points'].get(uid, 0) < BET_AMOUNT:
         await ctx.send("❌ 포인트 부족 (10포인트 필요)")
         return
 
-    data.setdefault("slot_jackpot", BASE_JACKPOT)
-    data.setdefault("slot_attempts", {})
+    # 잭팟 초기화 (최초 1회)
+    if "slot_jackpot" not in data:
+        data['slot_jackpot'] = BASE_JACKPOT
 
+    # 베팅 처리
     data['user_points'][uid] -= BET_AMOUNT
     data['slot_jackpot'] += BET_AMOUNT
-    data['slot_attempts'][uid] = data['slot_attempts'].get(uid, 0) + 1
 
     # 결과 미리 계산
     chance = random.random()
@@ -399,14 +401,14 @@ async def 슬롯(ctx):
             if len(set(final_result)) > 1:
                 break
 
-    # 🎰 애니메이션 시작 (초고속)
+    # 🎰 애니메이션 (초고속 4회전)
     rolling_msg = await ctx.send("🎰 슬롯머신 작동중...")
 
-    for i in range(10):  # 빠른 10회전
+    for _ in range(4):
         roll = [random.choice(EMOJIS) for _ in range(5)]
         display = f"🎰 | {' '.join(roll)}"
         await rolling_msg.edit(content=display)
-        await asyncio.sleep(0.1 - i * 0.005)  # 휘리릭 느낌으로 가속
+        await asyncio.sleep(0.1)
 
     await asyncio.sleep(0.2)
     await rolling_msg.edit(content=f"🎯 최종 결과 | {' '.join(final_result)}")
@@ -427,27 +429,17 @@ async def 슬롯(ctx):
             bonus_msg = "☀️ **솔라잭팟! 추가 보너스 500포인트!**"
 
         data['user_points'][uid] += reward
-        leftover_pool = data['slot_jackpot'] - reward
-        attempts_sorted = sorted(data['slot_attempts'].items(), key=lambda x: x[1], reverse=True)
-        recipients = [user for user, _ in attempts_sorted if user != uid][:2]
-        share = leftover_pool // len(recipients) if recipients else 0
-
-        for recipient_id in recipients:
-            data['user_points'][recipient_id] = data['user_points'].get(recipient_id, 0) + share
 
         lines.append(f"🎉 **{common} 5개 잭팟 당첨! {reward:,}포인트 획득!**")
         if bonus_msg:
             lines.append(bonus_msg)
-        if recipients:
-            dist_msg = " / ".join([f"<@{r}> (+{share:,}포인트)" for r in recipients])
-            lines.append(f"🎁 잔여 분배: {dist_msg}")
 
-        data['slot_jackpot'] = BASE_JACKPOT + sum(data['slot_attempts'].values()) * BET_AMOUNT
-        data['slot_attempts'] = {}
+        # 잭팟 초기화 (리셋)
+        data['slot_jackpot'] = BASE_JACKPOT
 
     else:
-        accumulated = max(0, data['slot_jackpot'] - BASE_JACKPOT)
-        lines.append("💀 꽝! 다음 기회를 노려보세요!")
+        accumulated = data['slot_jackpot'] - BASE_JACKPOT
+        lines.append("💀 꽝! 누적 상금은 계속 쌓입니다...")
         lines.append(f"💸 누적 잭팟 : {BASE_JACKPOT} + {accumulated:,} = {data['slot_jackpot']:,}포인트")
         lines.append(f"💰 남은 내 포인트 : {data['user_points'][uid]:,}포인트")
 
