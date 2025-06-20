@@ -567,25 +567,28 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
     user_id = str(ctx.author.id)
     store = load_talent_store()
 
-    # ── 1) 등록 ───────────────────────────────────────────
+    # ── 등록 ──
     if action == "등록":
+        if seller and seller.id != ctx.author.id:
+            return await ctx.send("❌ 다른 사람 대신 상품을 등록할 수 없습니다. 본인만 등록 가능해요.")
+
+        # 판매자 없이 입력한 경우 → 본인으로 간주
         if not args:
-            return await ctx.send("❗ 등록 형식: `!재능상점 등록 (상품명) 가격` 　※ @멘션 필요 없음")
+            return await ctx.send("❗ 등록 형식: `!재능상점 등록 (상품명) 가격`")
 
         name, price = extract_name_and_price(args)
         if not name or price is None:
-            return await ctx.send("❗ 등록 형식 오류: `(상품명)`은 괄호로, 가격은 숫자로 입력해 주세요.")
+            return await ctx.send("❗ 상품명은 `( )` 안에, 가격은 숫자로 입력해 주세요.")
 
         store.setdefault(user_id, {"items": []})["items"].append({"name": name, "price": price})
         save_talent_store(store)
         await ctx.send(f"✅ 상품 '**{name}**'이 등록되었습니다. 가격: {price}코인")
 
-    # ── 2) 관리 ───────────────────────────────────────────
+    # ── 관리 ──
     elif action == "관리":
         if user_id not in store or not store[user_id]["items"]:
             return await ctx.send("📦 등록된 상품이 없습니다.")
 
-        # 삭제 처리
         if args and args.endswith(" 삭제"):
             m = re.search(r"\((.*?)\)", args)
             if not m:
@@ -598,39 +601,40 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
                 f"🗑️ {'삭제 완료!' if len(store[user_id]['items']) < before else '해당 상품이 없습니다.'}"
             )
 
-        # 목록 임베드
         embed = discord.Embed(title="🗂️ 내 상점 상품 목록", color=discord.Color.blue())
         lines = [f"{i+1}. **{it['name']}** — {it['price']}코인"
                  for i, it in enumerate(store[user_id]["items"])]
         embed.description = "\n".join(lines)
         await ctx.send(embed=embed)
 
-    # ── 3) 구경 ───────────────────────────────────────────
+    # ── 구경 ──
     elif action == "구경":
         if not store:
             return await ctx.send("📭 현재 등록된 상점이 없습니다.")
 
-        rows = []
-        idx = 1
+        embed = discord.Embed(title="🛍️ 전체 재능상점 목록", color=discord.Color.green())
+        count = 1
+
         for sid, info in store.items():
             member = ctx.guild.get_member(int(sid))
-            if not member:
+            if not member or not info['items']:
                 continue
-            for it in info["items"]:
-                rows.append(f"{idx:>2} │ {it['name']:<15} │ {member.display_name:<12} │ {it['price']}코인")
-                idx += 1
+            for item in info['items']:
+                embed.add_field(
+                    name=f"{count}. **{item['name']}**",
+                    value=(
+                        f"• 👤 판매자: {member.display_name}\n"
+                        f"• 💰 가격: {item['price']}코인"
+                    ),
+                    inline=False
+                )
+                count += 1
 
-        if not rows:
+        if count == 1:
             return await ctx.send("📭 현재 등록된 상품이 없습니다.")
-
-        table = "번호 │ 상품명           │ 판매자        │ 가격\n" \
-                "────┼────────────────┼──────────────┼────────\n" + "\n".join(rows)
-
-        embed = discord.Embed(title="🛍️ 전체 재능상점 목록", color=discord.Color.green())
-        embed.description = f"```{table}```"
         await ctx.send(embed=embed)
 
-    # ── 4) 구매 ───────────────────────────────────────────
+    # ── 구매 ──
     elif action == "구매":
         if not seller or not args:
             return await ctx.send("❗ 형식: `!재능상점 구매 @판매자 (상품명)`")
@@ -655,15 +659,12 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
         if data["user_points"].get(buyer_id, 0) < price:
             return await ctx.send("😢 포인트가 부족합니다.")
 
-        # 거래
         data["user_points"][buyer_id] -= price
         data["user_points"][seller_id] = data["user_points"].get(seller_id, 0) + price
         write_data(data)
 
-        await ctx.send(f"✅ {ctx.author.display_name}님이 {seller.display_name}님의 '**{item_name}**' "
-                       f"상품을 {price}코인에 구매했습니다!")
+        await ctx.send(f"✅ {ctx.author.display_name}님이 {seller.display_name}님의 '**{item_name}**' 상품을 {price}코인에 구매했습니다!")
 
-        # DM 알림
         try:
             dm = discord.Embed(
                 title="📬 재능상점 알림",
@@ -675,7 +676,7 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
         except discord.Forbidden:
             await ctx.send("⚠️ 판매자에게 DM을 보낼 수 없습니다 (DM 차단).")
 
-    # ── 5) 도움말 ──────────────────────────────────────────
+    # ── 도움말 ──
     elif action == "도움말":
         embed = discord.Embed(
             title="🌞 솔라 재능상점 도움말",
@@ -684,14 +685,13 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
         )
         embed.set_thumbnail(url=ctx.bot.user.avatar.url)
         embed.add_field(
-            name="🛒 판매하기 (본인 상품 등록)",
+            name="🛒 상품 등록 (본인만 가능)",
             value="`!재능상점 등록 (상품명) 가격`\n예: `!재능상점 등록 (썸네일 제작) 30`",
             inline=False
         )
         embed.add_field(
             name="📦 내 상점 관리/삭제",
-            value=("`!재능상점 관리`\n"
-                   "`!재능상점 관리 (상품명) 삭제`"),
+            value="`!재능상점 관리`\n`!재능상점 관리 (상품명) 삭제`",
             inline=False
         )
         embed.add_field(
@@ -700,21 +700,18 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
             inline=False
         )
         embed.add_field(
-            name="🎯 상품 구매 (다른 사람 상품)",
-            value=("`!재능상점 구매 @판매자 (상품명)`\n"
-                   "예: `!재능상점 구매 @희카츄 (썸네일 제작)`"),
+            name="🎯 상품 구매",
+            value="`!재능상점 구매 @판매자 (상품명)`\n예: `!재능상점 구매 @희카츄 (썸네일 제작)`",
             inline=False
         )
         embed.add_field(
             name="⚠️ 참고사항",
-            value=("• 등록/관리에는 @멘션 필요 ❌\n"
-                   "• 구매 시에만 @멘션 필요 ✅\n"
-                   "• 상품명은 괄호 `( )` 안에 작성"),
+            value="• 등록은 본인만 가능하며 @멘션 ❌\n• 구매 시에만 @멘션 필요 ✅\n• 상품명은 반드시 괄호 `( )` 안에 작성",
             inline=False
         )
         await ctx.send(embed=embed)
 
-    # ── 6) 잘못된 입력 ─────────────────────────────────────
+    # ── 잘못된 입력 ──
     else:
         await ctx.send(
             "**사용법 요약:**\n"
