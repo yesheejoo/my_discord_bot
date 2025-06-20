@@ -580,7 +580,7 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
 
         store[user_id]["items"].append({"name": name, "price": price})
         save_talent_store(store)
-        await ctx.send(f"✅ 상품 '{name}'가 등록되었습니다. 가격: {price}코인")
+        await ctx.send(f"✅ 상품 '**{name}**'이 등록되었습니다. 가격: {price}코인")
 
     elif action == "관리":
         if user_id not in store or not store[user_id]["items"]:
@@ -597,11 +597,10 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
             save_talent_store(store)
 
             if len(store[user_id]["items"]) < before:
-                return await ctx.send(f"🗑️ 상품 '{del_name}' 삭제 완료!")
+                return await ctx.send(f"🗑️ 상품 '**{del_name}**' 삭제 완료!")
             else:
-                return await ctx.send(f"❌ 상품 '{del_name}'이 없습니다.")
+                return await ctx.send(f"❌ 상품 '**{del_name}**'이 없습니다.")
 
-        # 목록 출력
         lines = [f"- {it['name']} : {it['price']}코인" for it in store[user_id]["items"]]
         await ctx.send("**내 상점 상품 목록:**\n" + "\n".join(lines))
 
@@ -610,6 +609,7 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
             return await ctx.send("📭 현재 등록된 상점이 없습니다.")
 
         embed = discord.Embed(title="🛍️ 전체 재능상점 목록", color=discord.Color.green())
+        count = 1
 
         for sid, info in store.items():
             member = ctx.guild.get_member(int(sid))
@@ -617,12 +617,66 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
                 continue
             for item in info['items']:
                 embed.add_field(
-                    name=f"{member.display_name}",
-                    value=f"상품: {item['name']}\n가격: {item['price']}코인",
+                    name=f"{count}. **{item['name']}**",
+                    value=(
+                        f"• 👤 판매자: {member.display_name}\n"
+                        f"• 💰 가격: {item['price']}코인"
+                    ),
                     inline=False
                 )
+                count += 1
 
+        if count == 1:
+            return await ctx.send("📭 현재 등록된 상품이 없습니다.")
         await ctx.send(embed=embed)
+
+    elif action == "구매":
+        if not seller or not args:
+            return await ctx.send("❗ 형식 오류: `!재능상점 구매 @판매자 (상품명)` 형식으로 입력해주세요.")
+
+        name_match = re.search(r"\((.*?)\)", args)
+        if not name_match:
+            return await ctx.send("❗ 상품명을 괄호 `(상품명)` 형태로 정확히 입력해주세요.")
+
+        item_name = name_match.group(1).strip()
+        seller_id = str(seller.id)
+
+        if seller_id not in store or not store[seller_id]["items"]:
+            return await ctx.send("❌ 해당 판매자의 상점이 비어있습니다.")
+
+        item = next((it for it in store[seller_id]["items"] if it["name"] == item_name), None)
+        if not item:
+            return await ctx.send(f"❌ 해당 판매자의 상점에 '{item_name}' 상품이 없습니다.")
+
+        data = read_data()
+        buyer_id = str(ctx.author.id)
+        price = item["price"]
+
+        if data["user_points"].get(buyer_id, 0) < price:
+            return await ctx.send("😢 포인트가 부족합니다.")
+
+        # 거래 처리
+        data["user_points"][buyer_id] -= price
+        data["user_points"][seller_id] = data["user_points"].get(seller_id, 0) + price
+        write_data(data)
+
+        await ctx.send(f"✅ {ctx.author.display_name}님이 {seller.display_name}님의 '**{item_name}**' 상품을 {price}코인에 구매하였습니다!")
+
+        # 📬 DM 전송 시도
+        try:
+            dm_embed = discord.Embed(
+                title="📬 재능상점 알림",
+                description=(
+                    f"**{ctx.author.display_name}**님이 당신의 상품 '**{item_name}**'을(를) "
+                    f"{price}코인에 구매했습니다!\n\n"
+                    "구체적인 의뢰 내용을 논의해주세요! 📨"
+                ),
+                color=discord.Color.purple()
+            )
+            await seller.send(embed=dm_embed)
+
+        except discord.Forbidden:
+            await ctx.send("⚠️ 판매자에게 DM을 보낼 수 없습니다 (DM 차단됨).")
 
     elif action == "도움말":
         embed = discord.Embed(
@@ -635,16 +689,24 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
             name="🛒 판매하기",
             value=(
                 "`!재능상점 등록 (상품명) 가격`\n"
+                "예: `!재능상점 등록 (썸네일 제작) 30`"
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="📦 내 상점 관리",
+            value=(
                 "`!재능상점 관리`\n"
                 "`!재능상점 관리 (상품명) 삭제`"
             ),
             inline=False
         )
         embed.add_field(
-            name="🎯 구매하기",
+            name="🎯 상품 구매",
             value=(
                 "`!재능상점 구경`\n"
-                "`!재능상점 구매 @판매자 (상품명)`"
+                "`!재능상점 구매 @판매자 (상품명)`\n"
+                "예: `!재능상점 구매 @희카츄 (썸네일 제작)`"
             ),
             inline=False
         )
@@ -652,8 +714,8 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
             name="⚠️ 참고사항",
             value=(
                 "- 상품명은 반드시 괄호 `( )` 안에 작성\n"
-                "- 띄어쓰기 자유롭게 가능\n"
-                "- 구매시 판매자 `@멘션` 필수"
+                "- 띄어쓰기 허용, 한글/영문 자유\n"
+                "- 판매자 `@멘션` 필수"
             ),
             inline=False
         )
