@@ -916,6 +916,35 @@ async def 배팅(ctx, 노팔: int | None = None, 금액: int | None = None):
 
     await ctx.send(f"💸 {ctx.author.display_name}님이 {노팔}번 말에 {금액}코인 배팅!")
 
+import random, asyncio
+from discord.ext import commands
+
+# ───── 숫자게임 ─────
+@bot.command()
+async def 숫자게임(ctx):
+    target = random.randint(1, 10)
+    await ctx.send("🎲 1부터 10 사이의 숫자를 맞혀보세요! (10초 안에 채팅으로 입력)")
+
+    def check(m):
+        return m.author == ctx.author and m.channel == ctx.channel
+
+    try:
+        msg = await bot.wait_for('message', check=check, timeout=10.0)
+        guess = int(msg.content)
+
+        if guess == target:
+            data = read_data()
+            uid = str(ctx.author.id)
+            data["user_points"][uid] = data["user_points"].get(uid, 0) + 50
+            write_data(data)
+            await ctx.send(f"🎉 정답입니다! 숫자는 {target}이었어요.\n💰 보상으로 50코인을 획득하셨습니다!")
+        else:
+            await ctx.send(f"❌ 틀렸어요! 정답은 {target}이었습니다.")
+    except asyncio.TimeoutError:
+        await ctx.send(f"⌛ 시간이 초과되었습니다! 정답은 {target}이었습니다.")
+    except ValueError:
+        await ctx.send("❗ 숫자만 입력해 주세요.")
+
 # ───── 봇 실행 ─────
 print("🤖 디스코드 봇 전체 통합 리팩토링 버전 실행 준비 완료!")
 bot.run(TOKEN)
