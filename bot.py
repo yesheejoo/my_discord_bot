@@ -36,7 +36,9 @@ DEFAULT_DATA = {
     "slot_attempts": {},
     "beg_log": {},
     "usernames": {},
-    "inventory": {}
+    "inventory": {},
+    "user_join_times": {},         
+    "user_mic_history": {} 
 }
 
 # ───── JSON 읽기/쓰기 ─────
@@ -78,6 +80,73 @@ def extract_name_and_price(args):
     name = match.group(1).strip()
     price = int(match.group(2))
     return name, price
+
+# ───── 음성 접속 포인트 적립 설정 ─────
+POINT_RATE = {"on": 2, "off": 1}          # 1분당 적립 포인트
+user_join_times: dict[str, datetime.datetime] = {}
+user_mic_history: dict[str, list[tuple[datetime.datetime, bool]]] = {}
+
+def save_username(member: discord.Member):
+    """닉네임 변경 시 기록 (선택: 이미 처리 중이면 제거)"""
+    data = read_data()
+    uid = str(member.id)
+    data.setdefault("usernames", {})[uid] = member.display_name
+    write_data(data)
+
+def process_voice_leave(uid: str, leave_time: datetime.datetime):
+    """채널을 완전히 떠나거나 이동할 때 호출 – 머무른 시간만큼 포인트 계산"""
+    join_time = user_join_times.pop(uid, None)
+    history   = user_mic_history.pop(uid, [])
+
+    if not join_time:
+        return  # 비정상 종료 보호
+
+    history.append((leave_time, history[-1][1] if history else False))
+
+    # join_time 이후 구간만 남김
+    history = [(t, m) for t, m in history if t >= join_time]
+
+    total_minutes = 0.0
+    for (t1, mic_on1), (t2, _) in zip(history, history[1:]):
+        mins = (t2 - t1).total_seconds() / 60
+        total_minutes += mins * (POINT_RATE["on"] if mic_on1 else POINT_RATE["off"])
+
+    earned = int(total_minutes)  # 소수점 버림
+
+    if earned > 0:
+        data = read_data()
+        data["user_points"][uid]  = data["user_points"].get(uid, 0)  + earned
+        data["activity_xp"][uid]  = data["activity_xp"].get(uid, 0)  + earned
+        write_data(data)
+
+# ───── 음성 상태 이벤트 ─────
+@bot.event
+async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+    uid = str(member.id)
+    now = datetime.datetime.utcnow()      # 서버 내부 계산은 UTC 사용(한국시간 +9 h 필요 없음)
+    save_username(member)
+
+    prev_channel = before.channel
+    curr_channel = after.channel
+
+    # 1) 채널 입장
+    if not prev_channel and curr_channel:
+        user_join_times[uid]   = now
+        user_mic_history[uid]  = [(now, not after.self_mute)]
+
+    # 2) 같은 채널 내에서 mute/unmute 토글
+    elif prev_channel and curr_channel and prev_channel.id == curr_channel.id:
+        user_mic_history.setdefault(uid, []).append((now, not after.self_mute))
+
+    # 3) 채널 이동
+    elif prev_channel and curr_channel and prev_channel.id != curr_channel.id:
+        process_voice_leave(uid, now)
+        user_join_times[uid]   = now
+        user_mic_history[uid]  = [(now, not after.self_mute)]
+
+    # 4) 채널 퇴장
+    elif prev_channel and not curr_channel:
+        process_voice_leave(uid, now)
 
 # ───── 레벨 시스템 ─────
 def xp_for_next(level):
