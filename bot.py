@@ -688,7 +688,7 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
         embed.set_thumbnail(url=ctx.bot.user.avatar.url)
         embed.add_field(
             name="🛒 상품 등록 (본인만 가능)",
-            value="`!재능상점 등록 @판매자 (상품명) 가격`\n예: `!재능상점 등록 (썸네일 제작) 30`",
+            value="`!재능상점 등록 @판매자 (상품명) 가격`\n예: `!재능상점 등록 @판매자 (썸네일 제작) 30`",
             inline=False
         )
         embed.add_field(
@@ -703,7 +703,7 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
         )
         embed.add_field(
             name="🎯 상품 구매",
-            value="`!재능상점 구매 @판매자 (상품명)`\n예: `!재능상점 구매 @희카츄 (썸네일 제작)`",
+            value="`!재능상점 구매 @판매자 (상품명)`\n예: `!재능상점 구매 @희카츄/97 (썸네일 제작)`",
             inline=False
         )
         embed.add_field(
