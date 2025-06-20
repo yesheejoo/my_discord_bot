@@ -211,7 +211,7 @@ async def 출석(ctx):
         data["streak_log"][uid] = 1
 
     base_reward = 50
-    bonus = random.choice([77 if random.random() < 0.02 else random.randint(1, 5) if random.random() < 0.3 else 0])
+    bonus = 77 if random.random() < 0.05 else 0  # 5% 확률로 77포인트, 아니면 0
     total = base_reward + bonus
 
     data["user_points"][uid] += total
@@ -236,7 +236,7 @@ async def 출석(ctx):
 
     # 보너스 메시지 추가
     bonus_msg = ""
-    if bonus > 0:
+    if bonus == 77:
         bonus_msg = (
             f"@{ctx.author.display_name}님의 출석이 메카살인기의 심장을 깨워\n"
             f"🎉 대박! 추가로 **{bonus}포인트**를 획득했습니다!"
