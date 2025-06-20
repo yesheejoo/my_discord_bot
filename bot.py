@@ -779,11 +779,11 @@ horse_race_state = {
     "msg": None         # 진행 중 트랙 메시지
 }
 
-TRACK_LEN = 20          # 경시선까지 거리
+TRACK_LEN = 20          # 결승선까지 거리
 TICK_SEC  = 0.10        # 말 이동 주기(초)
 HORSE_ICONS = [
     "🏇", "🐂", "🐉", "🦓", "🐐", "🐖", "🐪"
-]  # 그종 마리 이름에 따라 특수 이모지 선정 가능
+]
 
 @bot.command()
 async def 경마(ctx, action: str = None, *, args: str | None = None):
@@ -821,11 +821,12 @@ async def 경마(ctx, action: str = None, *, args: str | None = None):
             return await ctx.send("🚫 이미 경주가 시작되었습니다.")
 
         horse_race_state["is_running"] = True
-        track_msg = await ctx.send("```🏳️ 경기 시작 준비 중...```")
+        track_msg = await ctx.send("```🌾 경기 시작 준비 중...```")
         horse_race_state["msg"] = track_msg
 
         finished: set[int] = set()
         order: list[int] = []
+        base_weights = [1, 3, 4, 2]  # 0~3칸 이동 확률 기본값
 
         while True:
             await asyncio.sleep(TICK_SEC)
@@ -833,9 +834,9 @@ async def 경마(ctx, action: str = None, *, args: str | None = None):
             for idx in range(len(horse_race_state["positions"])):
                 if idx in finished:
                     continue
-                # 말 속도에 가속/감속 가중치 추가
-                prev = horse_race_state["positions"][idx]
-                step = random.choices([0, 1, 2, 3], weights=[1, 3, 4, 2])[0]
+                condition = random.uniform(0.9, 1.1)
+                weights = [w * condition for w in base_weights]
+                step = random.choices([0, 1, 2, 3], weights=weights)[0]
                 horse_race_state["positions"][idx] += step
                 if horse_race_state["positions"][idx] >= TRACK_LEN:
                     finished.add(idx)
