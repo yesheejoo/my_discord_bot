@@ -769,9 +769,6 @@ async def 평균(ctx):
     await ctx.send(embed=embed)
 
 # ───── 경마 게임 시스템 ─────
-import random, asyncio
-from discord import Embed
-
 # 경마 상태
 horse_race_state = {
     "horses": [],
@@ -808,7 +805,6 @@ async def 경마(ctx, action=None, *, args=None):
             "msg": None
         })
 
-        # 안내 Embed
         em = Embed(title="**🏇 경마가 준비되었습니다!**", color=0xF1C40F)
         em.description = "말 번호와 금액으로 배팅하세요: `!배팅 <번호> <코인>`"
         em.description += "\n\n" + "\n".join([f"**{i+1}.** {name}" for i, name in enumerate(horses)])
@@ -836,8 +832,7 @@ async def 경마(ctx, action=None, *, args=None):
                 bar = "·" * min(pos, TRACK_LEN) + icon + "·" * max(TRACK_LEN - pos, 0)
                 board.append(f"{i+1:>2}|{bar[:TRACK_LEN]}| {name}")
 
-            await track_msg.edit(content=f"```
-" + "\n".join(board) + "\n```")
+            await track_msg.edit(content="```\n" + "\n".join(board) + "\n```")
             if any(p >= TRACK_LEN for p in horse_race_state["positions"]):
                 break
 
