@@ -665,16 +665,18 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
 
         await ctx.send(f"✅ {ctx.author.display_name}님이 {seller.display_name}님의 '**{item_name}**' 상품을 {price}코인에 구매했습니다!")
 
-        try:
-            dm = discord.Embed(
-                title="📬 재능상점 알림",
-                description=(f"**{ctx.author.display_name}**님이 '**{item_name}**'을(를) "
-                             f"{price}코인에 구매했습니다!\n상세 내용을 논의해 주세요."),
-                color=discord.Color.purple()
-            )
-            await seller.send(embed=dm)
-        except discord.Forbidden:
-            await ctx.send("⚠️ 판매자에게 DM을 보낼 수 없습니다 (DM 차단).")
+       try:
+    dm = discord.Embed(
+        title="**📬 재능상점 구매 알림**",
+        description=(
+            f"🛍️{ctx.author.mention}님이 '**{item_name}**'을(를) **{price}코인**에 구매했습니다!\n"
+            f"구체적인 내용은 {ctx.author.mention}님과 이야기를 나눠보세요!"
+        ),
+        color=discord.Color.purple()
+    )
+    await seller.send(embed=dm)
+except discord.Forbidden:
+    await ctx.send("⚠️ 판매자에게 DM을 보낼 수 없습니다 (DM 차단).")
 
     # ── 도움말 ──
     elif action == "도움말":
