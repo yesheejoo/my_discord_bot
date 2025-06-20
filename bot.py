@@ -769,28 +769,34 @@ async def 평균(ctx):
     await ctx.send(embed=embed)
 
 # ───── 경마 게임 시스템 ─────
-# 경마 상태
+import random, asyncio
+from discord import Embed
+
+# 경마 상태 (싱글 레이스 전역 저장)
 horse_race_state = {
     "horses": [],
     "positions": [],
     "is_running": False,
-    "bettors": {},
+    "bettors": {},      # {uid: (horse_idx, amount)}
     "pool": 0,
-    "msg": None
+    "msg": None         # 진행 중 트랙 메시지
 }
 
-TRACK_LEN = 20
-TICK_SEC = 0.1
-HORSE_ICONS = ["🏇", "🐂", "🐉", "🦓", "🐐", "🐖", "🐪"]
+TRACK_LEN = 20          # 결승선까지 거리
+TICK_SEC  = 0.10        # 말 이동 주기(초)
+HORSE_ICONS = ["🏇", "🐂", "🐉", "🦓", "🐐", "🐖", "🐪"]  # 최대 7개 레인 사용
 
-# ── 경마 입장/시작/종료 ──
+# ── 경마: 입장·시작·종료 ─────────────────────────
 @bot.command()
-async def 경마(ctx, action=None, *, args=None):
+async def 경마(ctx, action: str = None, *, args: str | None = None):
+    """!경마 입장/시작/종료"""
+
+    # 1) 입장 --------------------------------------------------
     if action == "입장":
         if horse_race_state["is_running"]:
             return await ctx.send("🚫 이미 경주가 진행 중입니다.")
         if not args:
-            return await ctx.send("❗ 형식: `!경마 입장 말1 말2 ...`")
+            return await ctx.send("❗ 형식: `!경마 입장 말1 말2 ...` (2~8마리)")
 
         horses = args.split()
         if not 2 <= len(horses) <= 8:
@@ -805,89 +811,96 @@ async def 경마(ctx, action=None, *, args=None):
             "msg": None
         })
 
-        em = Embed(title="**🏇 경마가 준비되었습니다!**", color=0xF1C40F)
-        em.description = "말 번호와 금액으로 배팅하세요: `!배팅 <번호> <코인>`\n"
-        em.description += "\n" + "\n".join([f"**{i+1}.** {name}" for i, name in enumerate(horses)])
-        await ctx.send(embed=em)
+        embed = Embed(title="**🏇 경마가 준비되었습니다!**", color=0xF1C40F)
+        embed.description = (
+            "말 번호와 금액으로 배팅하세요: `!배팅 <번호> <코인>`\n\n" +
+            "\n".join(f"**{i+1}.** {name}" for i, name in enumerate(horses))
+        )
+        await ctx.send(embed=embed)
+        return
 
-    elif action == "시작":
+    # 2) 시작 --------------------------------------------------
+    if action == "시작":
         if not horse_race_state["horses"]:
             return await ctx.send("❗ 먼저 `!경마 입장`으로 말을 등록해주세요.")
         if horse_race_state["is_running"]:
             return await ctx.send("🚫 이미 경주가 시작되었습니다.")
 
         horse_race_state["is_running"] = True
-        track_msg = await ctx.send("```
-🌾 경기 시작 준비 중...
-```")
+        track_msg = await ctx.send("```🌾 경기 시작 준비 중...```")
         horse_race_state["msg"] = track_msg
 
-        finished = set()
-        result_order = []
+        finished: set[int] = set()
+        order: list[int] = []
 
         while True:
             await asyncio.sleep(TICK_SEC)
-            for i in range(len(horse_race_state["positions"])):
-                if i in finished:
+
+            # 말 전진
+            for idx in range(len(horse_race_state["positions"])):
+                if idx in finished:
                     continue
                 step = random.choices([0, 1, 2, 3], weights=[2, 4, 3, 1])[0]
-                horse_race_state["positions"][i] += step
-                if horse_race_state["positions"][i] >= TRACK_LEN:
-                    finished.add(i)
-                    if i not in result_order:
-                        result_order.append(i)
+                horse_race_state["positions"][idx] += step
+                if horse_race_state["positions"][idx] >= TRACK_LEN:
+                    finished.add(idx)
+                    order.append(idx)
 
-            board = []
+            # 트랙 문자열 생성
+            rows = []
             for i, (name, pos) in enumerate(zip(horse_race_state["horses"], horse_race_state["positions"])):
                 icon = HORSE_ICONS[i % len(HORSE_ICONS)]
-                progress = min(pos, TRACK_LEN)
-                dots_before = "·" * progress
-                dots_after = "·" * (TRACK_LEN - progress)
-                bar = f"{dots_before}{icon}{dots_after}"
-                board.append(f"{i+1}|{bar}| {name}")
+                prog = min(pos, TRACK_LEN)
+                bar = "·" * prog + icon + "·" * (TRACK_LEN - prog)
+                rows.append(f"{i+1}|{bar[:TRACK_LEN]}| {name}")
 
-            await track_msg.edit(content="```
-" + "\n".join(board) + "\n```")
+            await track_msg.edit(content="```\n" + "\n".join(rows) + "\n```")
             if len(finished) == len(horse_race_state["horses"]):
                 break
 
+        # 결과 집계 -------------------------------------------
         medals = ["🥇", "🥈", "🥉"]
-        results = [f"{medals[i]} {i+1}등: {horse_race_state['horses'][idx]}" for i, idx in enumerate(result_order[:3])]
+        result_lines = [f"{medals[i]} {i+1}등: {horse_race_state['horses'][idx]}" for i, idx in enumerate(order[:3])]
 
-        pool = horse_race_state["pool"]
+        pool   = horse_race_state["pool"]
         bettors = horse_race_state["bettors"]
-        winners = [uid for uid, (hidx, _) in bettors.items() if hidx == result_order[0]] if bettors else []
+        win_users = [uid for uid, (hidx, _) in bettors.items() if hidx == order[0]] if bettors else []
 
-        if pool and winners:
-            share = pool // len(winners)
+        if pool and win_users:
+            share = pool // len(win_users)
             data = read_data()
-            for uid in winners:
+            for uid in win_users:
                 data["user_points"][str(uid)] = data["user_points"].get(str(uid), 0) + share
             write_data(data)
-            payout = f"우승 말에 배팅한 유저: {' '.join(f'<@{uid}>' for uid in winners)} (각 {share}코인 수령)"
+            payout = f"우승 말에 배팅한 유저: {' '.join(f'<@{u}>' for u in win_users)} (각 {share}코인 수령)"
         elif pool:
             payout = "우승 말에 배팅한 유저 없음 (상금 소멸)"
         else:
             payout = "이번 경주는 배팅 없이 진행되었습니다"
 
         result_embed = Embed(title="**🎉 경기 종료! 결과**", color=0x9B59B6)
-        result_embed.description = "\n".join(results)
+        result_embed.description = "\n".join(result_lines)
         result_embed.add_field(name="💰 배팅 결과", value=payout, inline=False)
-
         await ctx.send(embed=result_embed)
-        horse_race_state.update({"horses": [], "positions": [], "bettors": {}, "pool": 0, "is_running": False})
 
-    elif action == "종료":
-        horse_race_state.update({"horses": [], "positions": [], "bettors": {}, "pool": 0, "is_running": False})
+        # 상태 초기화
+        horse_race_state.update({"horses": [], "positions": [], "bettors": {}, "pool": 0, "is_running": False, "msg": None})
+        return
+
+    # 3) 종료 --------------------------------------------------
+    if action == "종료":
+        horse_race_state.update({"horses": [], "positions": [], "bettors": {}, "pool": 0, "is_running": False, "msg": None})
         await ctx.send("😕 경마가 강제 종료되었습니다.")
-    else:
-        await ctx.send("❗ 사용법: `!경마 입장 ...`, `!경마 시작`, `!경마 종료`")
+        return
 
-# ── 배팅 ──
+    # 잘못된 인자
+    await ctx.send("❗ 사용법: `!경마 입장 ...`, `!경마 시작`, `!경마 종료`")
+
+# ── 배팅 커맨드 ─────────────────────────────────────
 @bot.command()
-async def 배팅(ctx, 번호: int = None, 금액: int = None):
+async def 배팅(ctx, 번호: int | None = None, 금액: int | None = None):
     if not horse_race_state["horses"]:
-        return await ctx.send("❗ 말부터 등록해주세요: `!경마 입장 ...`")
+        return await ctx.send("❗ 먼저 말을 등록해주세요: `!경마 입장 ...`")
     if horse_race_state["is_running"]:
         return await ctx.send("🚫 이미 경주가 시작되었습니다.")
     if 번호 is None or 금액 is None:
@@ -908,7 +921,6 @@ async def 배팅(ctx, 번호: int = None, 금액: int = None):
     write_data(data)
 
     await ctx.send(f"💸 {ctx.author.display_name}님이 {번호}번 말에 {금액}코인 배팅!")
-
 
 # ───── 봇 실행 ─────
 print("🤖 디스코드 봇 전체 통합 리팩토링 버전 실행 준비 완료!")
