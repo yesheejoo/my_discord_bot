@@ -669,7 +669,7 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
             dm = discord.Embed(
                 title="**📬 재능상점 구매 알림**",
                 description=(
-                    f"🛍️ {ctx.author.mention}님이 '**{item_name}**'을(를) **{price}코인**에 구매했습니다!\n"
+                    f"🛍️ {ctx.author.display_name}님이 '**{item_name}**'을(를) **{price}코인**에 구매했습니다!\n"
                     f"구체적인 내용은 {ctx.author.mention}님과 이야기를 나눠보세요!"
                 ),
                 color=discord.Color.purple()
