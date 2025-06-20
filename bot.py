@@ -680,13 +680,13 @@ async def 재능상점(ctx, action=None, seller: discord.Member = None, *, args=
     elif action == "도움말":
         embed = discord.Embed(
             title="🌞 솔라 재능상점 도움말",
-            description="재능상점은 솔라리스 클랜원들의 다양한 재능을 포인트로 사고 파는 거래 시스템입니다.",
+            description="재능상점은 솔라리스 클랜원들의 다양한 재능을 \n포인트로 사고 파는 거래 시스템입니다.",
             color=0x00ffcc
         )
         embed.set_thumbnail(url=ctx.bot.user.avatar.url)
         embed.add_field(
             name="🛒 상품 등록 (본인만 가능)",
-            value="`!재능상점 등록 (상품명) 가격`\n예: `!재능상점 등록 (썸네일 제작) 30`",
+            value="`!재능상점 등록 @판매자 (상품명) 가격`\n예: `!재능상점 등록 (썸네일 제작) 30`",
             inline=False
         )
         embed.add_field(
