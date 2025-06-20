@@ -81,6 +81,17 @@ def extract_name_and_price(args):
     price = int(match.group(2))
     return name, price
 
+# ───── 버튼 설정 ─────
+TOKEN = os.environ.get("BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("❗ BOT_TOKEN 환경변수가 설정되지 않았습니다.")
+
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+intents.voice_states = True
+bot = commands.Bot(command_prefix="!", intents=intents)
+
 # ───── 음성 접속 포인트 적립 설정 ─────
 POINT_RATE = {"on": 2, "off": 1}          # 1분당 적립 포인트
 user_join_times: dict[str, datetime.datetime] = {}
@@ -172,17 +183,6 @@ def get_rank(level):
     if level >= 29: return "Bronze"
     if level >= 19: return "Iron"
     return "Unrank"
-
-# ───── 버튼 설정 ─────
-TOKEN = os.environ.get("BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("❗ BOT_TOKEN 환경변수가 설정되지 않았습니다.")
-
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-intents.voice_states = True
-bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ───── 출석 ─────
 MILESTONES = {5: 50, 10: 100, 15: 150, 20: 200, 30: 300, 50: 500, 75: 750, 100: 1000}
