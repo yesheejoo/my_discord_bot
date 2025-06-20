@@ -211,7 +211,7 @@ async def 출석(ctx):
         data["streak_log"][uid] = 1
 
     base_reward = 50
-    bonus = random.choice([40 if random.random() < 0.05 else random.randint(1, 5) if random.random() < 0.3 else 0])
+    bonus = random.choice([77 if random.random() < 0.02 else random.randint(1, 5) if random.random() < 0.3 else 0])
     total = base_reward + bonus
 
     data["user_points"][uid] += total
@@ -234,15 +234,26 @@ async def 출석(ctx):
 
     write_data(data)
 
+    # 보너스 메시지 추가
+    bonus_msg = ""
+    if bonus > 0:
+        bonus_msg = (
+            f"@{ctx.author.display_name}님의 출석이 메카살인기의 심장을 깨워\n"
+            f"🎉 대박! 추가로 **{bonus}포인트**를 획득했습니다!"
+        )
+
     # 임베드로 출력
     embed = discord.Embed(
-        title=f"** {ctx.author.display_name} 님 출석 완료!**",
+        title=f"**{ctx.author.display_name} 님 출석 완료!**",
         description=(
-            f"• 📅 출석 보상 : {total}포인트 획득!\n"
+            f"• 📅 출석 보상 : **{base_reward}포인트** 지급\n"
             f"• 🏃🏻 누적 출석 {total_checkins}일, 연속 {data['streak_log'][uid]}일"
         ),
         color=discord.Color.green()
     )
+
+    if bonus_msg:
+        embed.add_field(name="💥 출석 보너스", value=bonus_msg, inline=False)
 
     if milestone_bonus:
         embed.add_field(name="🎯 추가 보상", value=milestone_msg, inline=False)
