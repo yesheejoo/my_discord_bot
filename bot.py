@@ -344,7 +344,7 @@ async def reset_data(ctx):
 
 @bot.command()
 async def 지급(ctx, member: discord.Member, 점수: int):
-    if ctx.author.id not in allowed_admin_ids:
+    if str(ctx.author.id) not in ALLOWED_ADMIN_IDS:
         await ctx.send("🚫 관리자만 사용 가능합니다")
         return
 
