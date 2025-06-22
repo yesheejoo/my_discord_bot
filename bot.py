@@ -134,7 +134,12 @@ def process_voice_leave(uid: str, leave_time: datetime.datetime):
 @bot.event
 async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
     uid = str(member.id)
-    now = datetime.datetime.utcnow()      # 서버 내부 계산은 UTC 사용(한국시간 +9 h 필요 없음)
+
+    # ✅ TTS 봇 제외
+    if uid in ['1241383865478807582', '1289824359002669126']:
+        return
+
+    now = datetime.datetime.utcnow()
     save_username(member)
 
     prev_channel = before.channel
@@ -324,7 +329,18 @@ async def 포인트(ctx):
     await ctx.send(embed=embed)
 
 # ───── 관리자 수동 지급 ─────
-allowed_admin_ids = [518697602774990859, 1335240110358265967]
+ALLOWED_ADMIN_IDS = ['518697602774990859', '1335240110358265967']  # 문자열로 저장
+
+@bot.command(name='초기화')
+async def reset_data(ctx):
+    if str(ctx.author.id) not in ALLOWED_ADMIN_IDS:
+        await ctx.send("⛔ 이 명령은 관리자만 사용할 수 있습니다.")
+        return
+
+    global data
+    data = DEFAULT_DATA.copy()
+    write_data(data)
+    await ctx.send("✅ 데이터가 초기화되었습니다.")
 
 @bot.command()
 async def 지급(ctx, member: discord.Member, 점수: int):
@@ -948,18 +964,17 @@ async def 숫자게임(ctx):
 # ──────────────────── 공통 데이터 ────────────────────
 CHOICES = {"가위": 0, "바위": 1, "보": 2}
 RESULT_TXT = ["무승부!", "패배...", "승리!"]  # (user - rival) % 3 => 0무 1패 2승
-PSY_OPTIONS = {"겁쟁이": "💧", "상남자": "🔥"}
 
 # ──────────────────── !미니게임 도움말 ────────────────────
 @bot.command(name="미니게임", aliases=["미니게임도움말", "미니게임 도움말"])
 async def 미니게임도움말(ctx):
     embed = Embed(title="🎮 미니게임 도움말", color=discord.Color.teal())
-    embed.add_field(name="🏇 경마 게임", value="!경마 → 1등 말에 배팅한 유저가 모든 포인트를 가져갑니다!", inline=False)
-    embed.add_field(name="✊ 가위바위보 봇전", value="!가위바위보 [가위|바위|보] → 봇과 대결 (승리 시 포인트 획득)", inline=False)
-    embed.add_field(name="⚔️ 가위바위보 대결", value="!가위바위보대결 @상대 → 유저와 1:1 대결", inline=False)
-    embed.add_field(name="⚡ 반응속도 배틀", value="!반응속도배틀 [배팅액] → 가장 빠르게 입력한 유저가 포인트 독식!", inline=False)
-    embed.add_field(name="🎲 주사위 게임", value="!주사위 → 주사위 숫자 승부! 이기면 보상 획득", inline=False)
-    embed.add_field(name="🎯 숫자 게임", value="!숫자게임 → 1~10 사이 숫자를 맞춰서 100포인트 획득!", inline=False)
+    embed.add_field(name="🏇 경마 게임", value="`!경마` → 1등 말에 배팅한 유저가 모든 포인트를 가져갑니다!", inline=False)
+    embed.add_field(name="✊ 가위바위보 봇전", value="`!가위바위보 [가위|바위|보]` → 봇과 대결 (승리 시 포인트 획득)", inline=False)
+    embed.add_field(name="⚔️ 가위바위보 대결", value="`!가위바위보대결 @상대` → 유저와 1:1 대결", inline=False)
+    embed.add_field(name="⚡ 반응속도 배틀", value="`!반응속도 [배팅액]` → 가장 빠르게 입력한 유저가 포인트 독식!", inline=False)
+    embed.add_field(name="🎲 주사위 게임", value="`!주사위` → 주사위 숫자 승부! 이기면 보상 획득", inline=False)
+    embed.add_field(name="🎯 숫자 게임", value="`!숫자게임` → 1~10 사이 숫자를 맞춰서 100포인트 획득!", inline=False)
     await ctx.send(embed=embed)
 
 # ──────────────────── 미니게임 1) 가위바위보 봇전 (봇 vs 유저) ────────────────────
@@ -1120,6 +1135,7 @@ async def 반응속도(ctx, 베팅: int = 10):
         f"{result_txt}"
     )
     await ctx.send(embed=embed)
+
 # ───── 주사위 게임 ─────
 @bot.command(name="주사위")
 async def 주사위(ctx):
