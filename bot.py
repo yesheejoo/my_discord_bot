@@ -20,6 +20,39 @@ TALENT_STORE_FILE = os.path.join(BASE_DIR, "talent_store.json")
 
 DEFAULT_DATA = {"user_points": {}}
 
+# ───── Constants ─────
+CHOSUNG_LIST = [chr(code) for code in range(ord('ㄱ'), ord('ㅎ') + 1)]
+
+def get_chosung(text: str) -> str:
+    """한글 문자열을 초성 문자열로 변환합니다. 예: '가위바위보' -> 'ㄱㅂㅂ'"""
+    def is_hangul(char):
+        return '가' <= char <= '힣'
+    
+    result = ''
+    for char in text:
+        if not is_hangul(char):
+            result += char
+            continue
+        code = ord(char) - ord('가')
+        chosung_index = code // 588
+        result += CHOSUNG_LIST[chosung_index]
+    return result
+
+# ───── 초성 → 명령어 매핑 ─────
+초성명령어 = {
+    "ㅊㅅ": "출석",
+    "ㅍㅇㅌ": "포인트",
+    "ㄹㅋ": "랭킹",
+    "ㄷㅂ": "도박",
+    "ㅅㄹ": "슬롯",
+    "ㅂㄴㄱ": "보내기",
+    "ㅈㄱ": "지급",
+    "ㄱㅁ": "경마",
+    "ㄱㅂㅂ": "가위바위보",
+    "ㅂㅇ": "반응속도",
+    "ㅅㅈ": "숫자"
+}
+
 # ───── 데이터 통합 관리 ─────
 DEFAULT_DATA = {
     "user_points": {},
@@ -163,6 +196,20 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
     # 4) 채널 퇴장
     elif prev_channel and not curr_channel:
         process_voice_leave(uid, now)
+
+# ───── 초성 명령어 처리 이벤트 ─────
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot:
+        return
+
+    if message.content.startswith("!"):
+        cmd_only = message.content.split()[0][1:]
+        full_cmd = 초성명령어.get(cmd_only)
+        if full_cmd:
+            message.content = message.content.replace(f"!{cmd_only}", f"!{full_cmd}", 1)
+
+    await bot.process_commands(message)
 
 # ───── 레벨 시스템 ─────
 def xp_for_next(level):
@@ -419,6 +466,11 @@ async def 도움말(ctx):
     embed.add_field(
         name="🛒 `!재능상점 등록/관리/구경/구매`", 
         value="└ 자세한 사용법은 `!재능상점 도움말` 을 참고해주세요.", 
+        inline=False
+    )
+    embed.add_field(
+        name="🎮 미니게임 안내", 
+        value="`!미니게임 도움말`을 입력해 다양한 미니게임 기능을 확인해보세요!", 
         inline=False
     )
     
@@ -1013,31 +1065,38 @@ async def 가위바위보대결(ctx, 상대: discord.Member = None, 포인트: i
     if 상대 == ctx.author:
         return await ctx.send("❗ 자기 자신과는 대결할 수 없습니다.")
 
+    # 데이터 불러오기
     data = read_data()
     for member in (ctx.author, 상대):
         if data["user_points"].get(str(member.id), 0) < 포인트:
             return await ctx.send(f"😭 {member.display_name}님의 포인트가 부족합니다.")
 
-    await ctx.send(f"<@{상대.id}>! {ctx.author.mention}의 가위바위보 대결 요청! 배팅 **{포인트}포인트**\n수락하려면 `!수락` 입력 (30초 이내)")
+    # 상대방에게 수락 요청
+    await ctx.send(
+        f"<@{상대.id}>! {ctx.author.mention}의 가위바위보 대결 요청! 배팅 **{포인트}포인트**\n"
+        f"수락하려면 `!수락`을 입력하세요. (30초 이내)"
+    )
 
-    def accept_check(m):
+    def 수락체크(m):
         return m.author == 상대 and m.content.strip() == "!수락" and m.channel == ctx.channel
 
     try:
-        await bot.wait_for('message', timeout=30.0, check=accept_check)
+        await bot.wait_for('message', timeout=30.0, check=수락체크)
     except asyncio.TimeoutError:
         return await ctx.send("⌛ 상대가 수락하지 않아 대결이 취소되었습니다.")
 
-    await ctx.send("3... 2... 1... ✊✌️🖐️!  (5초 안에 **가위/바위/보** 입력)")
+    await ctx.send("3... 2... 1... ✊✌️🖐️! (5초 안에 **가위 / 바위 / 보** 입력)")
+
     picks: dict[int, str] = {}
 
-    def pick_check(m):
+    def 선택체크(m):
         return m.author in (ctx.author, 상대) and m.content.strip() in CHOICES and m.channel == ctx.channel
 
+    # 5초 안에 둘 다 입력 대기
     end_time = asyncio.get_event_loop().time() + 5
     while len(picks) < 2 and asyncio.get_event_loop().time() < end_time:
         try:
-            msg = await bot.wait_for('message', timeout=end_time - asyncio.get_event_loop().time(), check=pick_check)
+            msg = await bot.wait_for('message', timeout=end_time - asyncio.get_event_loop().time(), check=선택체크)
             picks[msg.author.id] = msg.content.strip()
         except asyncio.TimeoutError:
             break
@@ -1045,28 +1104,35 @@ async def 가위바위보대결(ctx, 상대: discord.Member = None, 포인트: i
     a_pick = picks.get(ctx.author.id)
     b_pick = picks.get(상대.id)
 
+    # 둘 중 한 명이 입력하지 않았을 경우 자동 패배 처리
     if not a_pick or not b_pick:
         forfeiter = 상대 if not b_pick else ctx.author
         winner = ctx.author if forfeiter == 상대 else 상대
         data["user_points"][str(winner.id)] += 포인트
         data["user_points"][str(forfeiter.id)] -= 포인트
         write_data(data)
-        return await ctx.send(f"🏳️ {forfeiter.display_name}가(이) 입력하지 않아 자동 패배!\n{winner.display_name} 승리 (+{포인트}포인트)")
+        return await ctx.send(f"🏳️ {forfeiter.display_name}가(이) 입력하지 않아 자동 패배!\n"
+                              f"{winner.display_name} 승리 (+{포인트}포인트)")
 
+    # --- 승패 계산 로직 (수정된 부분!) ---
     diff = (CHOICES[a_pick] - CHOICES[b_pick]) % 3
     if diff == 0:
         result_msg = "무승부! 포인트 변동 없음"
-    elif diff == 2:
-        data["user_points"][str(ctx.author.id)] += 포인트
-        data["user_points"][str(상대.id)] -= 포인트
-        result_msg = f"🥇 {ctx.author.display_name} 승리! (+{포인트}포인트)"
-    else:
+    elif diff == 1:
+        # ctx.author 패배
         data["user_points"][str(ctx.author.id)] -= 포인트
         data["user_points"][str(상대.id)] += 포인트
         result_msg = f"🥇 {상대.display_name} 승리! (+{포인트}포인트)"
+    else:  # diff == 2
+        # ctx.author 승리
+        data["user_points"][str(ctx.author.id)] += 포인트
+        data["user_points"][str(상대.id)] -= 포인트
+        result_msg = f"🥇 {ctx.author.display_name} 승리! (+{포인트}포인트)"
+
     write_data(data)
 
-    embed = Embed(title="✂️ 가위바위보 대결 결과", color=discord.Color.blue())
+    # 결과 출력
+    embed = Embed(title="✂️ 가위바위보 대결 결과", color=discord.Color.blurple())
     embed.description = (
         f"{ctx.author.display_name}: **{a_pick}**  vs  {상대.display_name}: **{b_pick}**\n\n"
         f"{result_msg}"
@@ -1076,24 +1142,59 @@ async def 가위바위보대결(ctx, 상대: discord.Member = None, 포인트: i
 # ──────────────────── 미니게임 3) 반응속도 배틀 (1:N 전용) ────────────────────
 @bot.command(name="반응속도")
 async def 반응속도(ctx, 베팅: int = 10):
-    await ctx.send(f"⚡ **반응속도 배틀** 시작!\n배팅액: **{베팅}포인트**\n30초 동안 `!참가` 로 참여해 주세요!")
-    participants = {ctx.author.id: ctx.author.display_name}
+    # ───── ① 안내 메시지 ─────
+    await ctx.send(
+        f"⚡ **반응속도 배틀** 시작!\n"
+        f"배팅액: **{베팅}포인트**\n"
+        f"30초 동안 `!참가` 로 참여하세요!\n"
+        f"▶ 충분히 모이면 방장(`{ctx.author.display_name}`)이 `!시작`을 입력해 바로 시작할 수 있습니다."
+    )
 
-    def join_check(m):
-        return m.channel == ctx.channel and m.content.strip() == "!참가"
+    # ───── ② 참가자 초기화 (방장은 자동 참가) ─────
+    participants: dict[int, str] = {ctx.author.id: ctx.author.display_name}
 
+    # 참가‧시작 메시지 판별 함수
+    def wait_check(m: discord.Message) -> bool:
+        return (
+            m.channel == ctx.channel
+            and not m.author.bot
+            and m.content.strip() in ("!참가", "!시작")
+        )
+
+    # ───── ③ 30초 또는 방장 !시작 입력까지 대기 ─────
     end_time = asyncio.get_event_loop().time() + 30
     while asyncio.get_event_loop().time() < end_time:
         try:
-            msg = await bot.wait_for("message", timeout=end_time - asyncio.get_event_loop().time(), check=join_check)
-            if not msg.author.bot:
-                participants[msg.author.id] = msg.author.display_name
+            msg: discord.Message = await bot.wait_for(
+                "message",
+                timeout=end_time - asyncio.get_event_loop().time(),
+                check=wait_check,
+            )
+
+            content = msg.content.strip()
+
+            # ③-A 참가 처리
+            if content == "!참가":
+                if msg.author.id not in participants:
+                    participants[msg.author.id] = msg.author.display_name
+                    await ctx.send(f"✅ **{msg.author.display_name}** 님 참가 완료! (현재 {len(participants)}명)")
+
+            # ③-B 즉시 시작 처리 (방장만 허용)
+            elif content == "!시작" and msg.author == ctx.author:
+                if len(participants) < 2:
+                    await ctx.send("❗ 최소 2명이 있어야 시작할 수 있습니다!")
+                else:
+                    await ctx.send("⏩ 방장이 시작을 눌렀습니다. 바로 게임을 시작합니다!")
+                    break
+
         except asyncio.TimeoutError:
-            break
+            break  # 30초 만료
 
+    # ───── ④ 참가 인원 확인 ─────
     if len(participants) < 2:
-        return await ctx.send("❗ 2명 이상 참가 필요! 게임 취소")
+        return await ctx.send("❗ 2명 이상 참가해야 합니다. 게임이 취소되었습니다.")
 
+    # ───── ⑤ 베팅 포인트 차감 ─────
     data = read_data()
     for uid in participants:
         if data["user_points"].get(str(uid), 0) < 베팅:
@@ -1101,34 +1202,47 @@ async def 반응속도(ctx, 베팅: int = 10):
         data["user_points"][str(uid)] -= 베팅
     write_data(data)
 
+    # ───── ⑥ 본게임: '솔라리스' 입력 속도 측정 ─────
     await ctx.send("준비... 키보드에 손을 올려 주세요!")
-    await asyncio.sleep(random.uniform(2, 5))
+    await asyncio.sleep(random.uniform(2, 5))  # 랜덤 대기
     await ctx.send("✨ **지금!** `솔라리스` 를 가장 빠르게 입력!")
-    start = time.perf_counter()
 
-    times = {}
+    start = time.perf_counter()
+    times: dict[int, float] = {}
+
+    def reaction_check(m: discord.Message) -> bool:
+        return (
+            m.channel == ctx.channel
+            and m.content.strip() == "솔라리스"
+            and m.author.id in participants
+        )
+
     while len(times) < len(participants):
         try:
-            msg = await bot.wait_for("message", timeout=5.0, check=lambda m: m.channel == ctx.channel and m.content.strip() == "솔라리스" and m.author.id in participants)
-            if msg.author.id not in times:
+            msg: discord.Message = await bot.wait_for("message", timeout=5.0, check=reaction_check)
+            if msg.author.id not in times:  # 첫 반응만 기록
                 times[msg.author.id] = round(time.perf_counter() - start, 3)
         except asyncio.TimeoutError:
             break
 
+    # ───── ⑦ 결과 집계 ─────
     if not times:
+        # 아무도 입력 안 하면 환불
         for uid in participants:
-            data["user_points"][str(uid)] += 베팅  # 환불
+            data["user_points"][str(uid)] += 베팅
         write_data(data)
-        return await ctx.send("⌛ 아무도 입력하지 않아 게임 무효. 포인트 환불 완료")
+        return await ctx.send("⌛ 아무도 입력하지 않아 게임이 무효가 되었습니다. 포인트를 환불했습니다.")
 
-    winner_id = min(times, key=times.get)
-    pot = 베팅 * len(participants)
-    data["user_points"][str(winner_id)] += pot
+    winner_id = min(times, key=times.get)               # 가장 짧은 시간
+    pot = 베팅 * len(participants)                      # 총 상금
+    data["user_points"][str(winner_id)] += pot          # 상금 지급
     write_data(data)
 
+    # 랭킹 문자열 생성
     ranking = sorted(times.items(), key=lambda x: x[1])
     result_txt = "\n".join([f"{i+1}등 : <@{uid}>  {t}s" for i, (uid, t) in enumerate(ranking)])
 
+    # ───── ⑧ 결과 메시지 Embed ─────
     embed = Embed(title="⚡ 반응속도 배틀 결과", color=discord.Color.gold())
     embed.description = (
         f"🏆 **1등 <@{winner_id}>**, 총 상금 **{pot}포인트** 획득!\n\n"
