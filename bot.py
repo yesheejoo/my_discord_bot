@@ -838,9 +838,9 @@ async def 평균(ctx):
 
 # ───── 경마 게임 시스템 ─────
 # 경기 트랙 설정
-TRACK_LEN = 20              # 결승선까지 거리(칸)
-TICK_SEC  = 0.10            # 내부 물리 프레임(초) ― 너무 작으면 디스코드 요청이 많아져 버벅임
-REFRESH_EVERY = 3           # n 틱마다 메시지 업데이트 (0.3 초마다 화면 갱신)
+TRACK_LEN = 25              # 결승선까지 거리(칸) - 조금 더 길게 설정
+TICK_SEC  = 0.25            # 내부 물리 프레임(초) - 느리게 진행되도록 조정
+REFRESH_EVERY = 1           # 매 틱마다 화면 업데이트 (더 자주 보여주기 위함)
 
 HORSE_ICONS = [
     "🏇", "🐂", "🐉", "🦓", "🐐", "🐖", "🐪"
@@ -848,12 +848,12 @@ HORSE_ICONS = [
 
 # 경마 상태 전역
 horse_race_state = {
-    "horses": [],           # 말 이름 리스트
-    "positions": [],        # 각 말의 현재 위치
-    "is_running": False,    # 경기 진행 여부
-    "bettors": {},         # {uid: (horse_idx, amount)}
-    "pool": 0,             # 총 배팅 풀
-    "msg": None            # 진행 중 트랙 메시지 객체
+    "horses": [],
+    "positions": [],
+    "is_running": False,
+    "bettors": {},
+    "pool": 0,
+    "msg": None
 }
 
 # ──────────────────────────────────────────────────────────
@@ -862,7 +862,6 @@ horse_race_state = {
 @bot.command()
 async def 경마(ctx, action: str = None, *, args: str | None = None):
     """!경마 입장/시작/종료"""
-    # 1) 말 입장 -------------------------------------------------
     if action == "입장":
         if horse_race_state["is_running"]:
             return await ctx.send("🚫 이미 경주가 진행 중입니다.")
@@ -873,7 +872,6 @@ async def 경마(ctx, action: str = None, *, args: str | None = None):
         if not 2 <= len(horses) <= 8:
             return await ctx.send("❗ 말은 2~8마리만 등록 가능합니다.")
 
-        # 상태 초기화
         horse_race_state.update({
             "horses": horses,
             "positions": [0]*len(horses),
@@ -890,7 +888,6 @@ async def 경마(ctx, action: str = None, *, args: str | None = None):
         )
         return await ctx.send(embed=embed)
 
-    # 2) 경기 시작 ------------------------------------------------
     if action == "시작":
         if not horse_race_state["horses"]:
             return await ctx.send("❗ 먼저 `!경마 입장`으로 말을 등록해주세요.")
@@ -901,7 +898,6 @@ async def 경마(ctx, action: str = None, *, args: str | None = None):
         track_msg = await ctx.send("```🌾 경기 시작 준비 중...```")
         horse_race_state["msg"] = track_msg
 
-        # 각 말마다 고유 속성(순간 가속도)를 줘서 업치락뒤치락 효과
         momentums = [random.uniform(0.8, 1.2) for _ in horse_race_state["horses"]]
 
         finished: set[int] = set()
@@ -915,18 +911,14 @@ async def 경마(ctx, action: str = None, *, args: str | None = None):
             for idx in range(len(horse_race_state["positions"])):
                 if idx in finished:
                     continue
-
-                # 매 틱마다 약간씩 다른 가중치 적용 → 역전 가능
                 condition = random.uniform(0.9, 1.1) * momentums[idx]
-                weights = [1 * condition, 3, 4 * (2-condition), 2]  # 0~3칸 확률 동적
+                weights = [1 * condition, 2.5, 3.5 * (2-condition), 1.5]
                 step = random.choices([0, 1, 2, 3], weights=weights)[0]
                 horse_race_state["positions"][idx] += step
-
                 if horse_race_state["positions"][idx] >= TRACK_LEN:
                     finished.add(idx)
                     order.append(idx)
 
-            # 메시지 업데이트 ― 매 REFRESH_EVERY 틱마다 한 번 (라그 완화)
             if tick % REFRESH_EVERY == 0 or len(finished) == len(horse_race_state["horses"]):
                 display_lines = []
                 for i, (name, pos) in enumerate(zip(horse_race_state["horses"], horse_race_state["positions"])):
@@ -940,10 +932,8 @@ async def 경마(ctx, action: str = None, *, args: str | None = None):
             if len(finished) == len(horse_race_state["horses"]):
                 break
 
-        # 3) 결과 출력 ------------------------------------------------
         medals = ["🥇", "🥈", "🥉"]
         horses = horse_race_state["horses"]
-        # "•" 대신 개행으로 보기 좋게
         result_lines = [
             f"{medals[r]} {horses[h]}" if r < 3 else f"{r+1}등 {horses[h]}"
             for r, h in enumerate(order)
@@ -971,45 +961,14 @@ async def 경마(ctx, action: str = None, *, args: str | None = None):
         result_embed.add_field(name="📢 배팅 결과", value=payout, inline=False)
         await ctx.send(embed=result_embed)
 
-        # 상태 초기화
         horse_race_state.update({"horses": [], "positions": [], "bettors": {}, "pool": 0, "is_running": False, "msg": None})
         return
 
-    # 4) 강제 종료 ---------------------------------------------------
     if action == "종료":
         horse_race_state.update({"horses": [], "positions": [], "bettors": {}, "pool": 0, "is_running": False, "msg": None})
         return await ctx.send("😕 경마가 강제 종료되었습니다.")
 
-    # 도움말
     await ctx.send("❗ 사용법: `!경마 입장 ...`, `!경마 시작`, `!경마 종료`")
-
-# ──────────────────────────────────────────────────────────
-# !배팅 명령어
-# ----------------------------------------------------------
-@bot.command()
-async def 배팅(ctx, 번호: int | None = None, 금액: int | None = None):
-    if not horse_race_state["horses"]:
-        return await ctx.send("❗ 먼저 말을 등록해주세요: `!경마 입장 ...`")
-    if horse_race_state["is_running"]:
-        return await ctx.send("🚫 이미 경주가 시작되어 배팅을 할 수 없습니다.")
-    if 번호 is None or 금액 is None:
-        return await ctx.send("❗ 형식: `!배팅 <번호> <코인>`")
-    if not 1 <= 번호 <= len(horse_race_state["horses"]):
-        return await ctx.send("❗ 유효한 말 번호를 입력해주세요.")
-
-    uid = str(ctx.author.id)
-    data = read_data()
-    if data["user_points"].get(uid, 0) < 금액:
-        return await ctx.send("😭 코인이 부족합니다.")
-    if uid in horse_race_state["bettors"]:
-        return await ctx.send("⚠️ 이미 배팅했습니다.")
-
-    data["user_points"][uid] -= 금액
-    horse_race_state["bettors"][uid] = (번호 - 1, 금액)
-    horse_race_state["pool"] += 금액
-    write_data(data)
-
-    await ctx.send(f"💸 {ctx.author.display_name}님이 {번호}번 말에 {금액}코인 배팅!")
 
 # ───── 숫자게임 ─────
 @bot.command()
@@ -1038,7 +997,6 @@ async def 숫자게임(ctx):
         await ctx.send("❗ 숫자만 입력해 주세요.")
 
 # ──────────────────── 공통 데이터 ────────────────────
-CHOICES = {"가위": 0, "바위": 1, "보": 2}
 RESULT_TXT = ["무승부!", "패배...", "승리!"]  # (user - rival) % 3 => 0무 1패 2승
 
 # ──────────────────── !미니게임 도움말 ────────────────────
@@ -1082,45 +1040,59 @@ async def 가위바위보(ctx, 선택: str | None = None, 포인트: int | None 
     await ctx.send(embed=embed)
 
 # ──────────────────── 미니게임 2) 가위바위보 대결 (유저 vs 유저) ─────────────────
+# ───── 가위바위보 대결 시스템 ─────
+CHOICES = {"가위": 0, "바위": 1, "보": 2}
+
 @bot.command(name="가위바위보대결")
-async def 가위바위보대결(ctx, 상대: discord.Member = None, 포인트: int = 10):
+async def 가위바위보대결(ctx, 상대: discord.Member = None):
     if not 상대 or 상대.bot:
-        return await ctx.send("❗ 형식: `!가위바위보대결 @상대 [포인트]`")
+        return await ctx.send("❗ 형식: `!가위바위보대결 @상대`")
     if 상대 == ctx.author:
         return await ctx.send("❗ 자기 자신과는 대결할 수 없습니다.")
 
-    # 데이터 불러오기
-    data = read_data()
-    for member in (ctx.author, 상대):
-        if data["user_points"].get(str(member.id), 0) < 포인트:
-            return await ctx.send(f"😭 {member.display_name}님의 포인트가 부족합니다.")
-
-    # 상대방에게 수락 요청
     await ctx.send(
-        f"<@{상대.id}>! {ctx.author.mention}의 가위바위보 대결 요청! 배팅 **{포인트}포인트**\n"
-        f"수락하려면 `!수락`을 입력하세요. (30초 이내)"
+        f"<@{상대.id}>! {ctx.author.mention}님이 가위바위보 대결을 신청했습니다.\n"
+        f"수락하려면 `!수락`을 입력해주세요. (30초 이내)"
     )
 
     def 수락체크(m):
         return m.author == 상대 and m.content.strip() == "!수락" and m.channel == ctx.channel
 
     try:
-        await bot.wait_for('message', timeout=30.0, check=수락체크)
+        await bot.wait_for("message", timeout=30.0, check=수락체크)
     except asyncio.TimeoutError:
         return await ctx.send("⌛ 상대가 수락하지 않아 대결이 취소되었습니다.")
 
-    await ctx.send("3... 2... 1... ✊✌️🖐️! (5초 안에 **가위 / 바위 / 보** 입력)")
+    await ctx.send("💰 배팅 금액을 입력해주세요 (예: `!배팅 50`) — 제한 시간 15초")
 
-    picks: dict[int, str] = {}
+    배팅액 = 10  # 기본값
+
+    def 배팅체크(m):
+        return m.author == ctx.author and m.content.startswith("!배팅") and m.channel == ctx.channel
+
+    try:
+        msg = await bot.wait_for("message", timeout=15.0, check=배팅체크)
+        parts = msg.content.split()
+        if len(parts) == 2 and parts[1].isdigit():
+            배팅액 = int(parts[1])
+        else:
+            return await ctx.send("❗ 올바른 형식으로 입력해주세요: `!배팅 50`")
+    except asyncio.TimeoutError:
+        return await ctx.send("⌛ 배팅 입력 시간이 초과되었습니다. 대결이 취소됩니다.")
+
+    await ctx.send("3초 후 가위/바위/보를 입력해주세요...")
+    await asyncio.sleep(3)
+    await ctx.send("✊✌️🖐️ 지금! `가위`, `바위`, `보` 중 하나를 입력하세요! (5초 이내)")
+
+    picks = {}
 
     def 선택체크(m):
         return m.author in (ctx.author, 상대) and m.content.strip() in CHOICES and m.channel == ctx.channel
 
-    # 5초 안에 둘 다 입력 대기
     end_time = asyncio.get_event_loop().time() + 5
     while len(picks) < 2 and asyncio.get_event_loop().time() < end_time:
         try:
-            msg = await bot.wait_for('message', timeout=end_time - asyncio.get_event_loop().time(), check=선택체크)
+            msg = await bot.wait_for("message", timeout=end_time - asyncio.get_event_loop().time(), check=선택체크)
             picks[msg.author.id] = msg.content.strip()
         except asyncio.TimeoutError:
             break
@@ -1128,35 +1100,23 @@ async def 가위바위보대결(ctx, 상대: discord.Member = None, 포인트: i
     a_pick = picks.get(ctx.author.id)
     b_pick = picks.get(상대.id)
 
-    # 둘 중 한 명이 입력하지 않았을 경우 자동 패배 처리
     if not a_pick or not b_pick:
         forfeiter = 상대 if not b_pick else ctx.author
         winner = ctx.author if forfeiter == 상대 else 상대
-        data["user_points"][str(winner.id)] += 포인트
-        data["user_points"][str(forfeiter.id)] -= 포인트
-        write_data(data)
-        return await ctx.send(f"🏳️ {forfeiter.display_name}가(이) 입력하지 않아 자동 패배!\n"
-                              f"{winner.display_name} 승리 (+{포인트}포인트)")
+        return await ctx.send(
+            f"🏳️ {forfeiter.display_name}님이 입력하지 않아 자동 패배!\n"
+            f"{winner.display_name}님 승리! (+{배팅액}포인트 [가상 보상])"
+        )
 
-    # --- 승패 계산 로직 (수정된 부분!) ---
     diff = (CHOICES[a_pick] - CHOICES[b_pick]) % 3
     if diff == 0:
         result_msg = "무승부! 포인트 변동 없음"
     elif diff == 1:
-        # ctx.author 패배
-        data["user_points"][str(ctx.author.id)] -= 포인트
-        data["user_points"][str(상대.id)] += 포인트
-        result_msg = f"🥇 {상대.display_name} 승리! (+{포인트}포인트)"
-    else:  # diff == 2
-        # ctx.author 승리
-        data["user_points"][str(ctx.author.id)] += 포인트
-        data["user_points"][str(상대.id)] -= 포인트
-        result_msg = f"🥇 {ctx.author.display_name} 승리! (+{포인트}포인트)"
+        result_msg = f"🥇 {ctx.author.display_name} 승리! (+{배팅액}포인트 [가상 보상])"
+    else:
+        result_msg = f"🥇 {상대.display_name} 승리! (+{배팅액}포인트 [가상 보상])"
 
-    write_data(data)
-
-    # 결과 출력
-    embed = Embed(title="✂️ 가위바위보 대결 결과", color=discord.Color.blurple())
+    embed = Embed(title="✂️ 가위바위보 대결 결과", color=discord.Color.blue())
     embed.description = (
         f"{ctx.author.display_name}: **{a_pick}**  vs  {상대.display_name}: **{b_pick}**\n\n"
         f"{result_msg}"
