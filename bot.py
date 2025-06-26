@@ -1061,12 +1061,12 @@ async def 가위바위보대결(ctx, 상대: discord.Member = None):
     except asyncio.TimeoutError:
         return await ctx.send("⌛ 상대가 수락하지 않아 대결이 취소되었습니다.")
 
-    await ctx.send("💰 배팅 금액을 입력해주세요 (예: `!배팅 50`) — 제한 시간 15초")
+    await ctx.send(f"💰 배팅 금액을 입력해주세요 (예: `!배팅금 50`) — 제한 시간 15초")
 
     배팅액 = 10
 
     def 배팅체크(m):
-        return m.author == ctx.author and m.content.startswith("!배팅") and m.channel == ctx.channel
+        return m.author == ctx.author and m.content.startswith("!배팅금") and m.channel == ctx.channel
 
     try:
         msg = await bot.wait_for("message", timeout=15.0, check=배팅체크)
@@ -1074,7 +1074,7 @@ async def 가위바위보대결(ctx, 상대: discord.Member = None):
         if len(parts) == 2 and parts[1].isdigit():
             배팅액 = int(parts[1])
         else:
-            return await ctx.send("❗ 올바른 형식으로 입력해주세요: `!배팅 50`")
+            return await ctx.send("❗ 올바른 형식으로 입력해주세요: `!배팅금 50`")
     except asyncio.TimeoutError:
         return await ctx.send("⌛ 배팅 입력 시간이 초과되어 대결이 취소됩니다.")
 
@@ -1146,6 +1146,7 @@ async def 가위바위보대결(ctx, 상대: discord.Member = None):
         f"{result_msg}"
     )
     await ctx.send(embed=embed)
+
 
 # ──────────────────── 미니게임 3) 반응속도 배틀 (1:N 전용) ────────────────────
 @bot.command(name="반응속도")
