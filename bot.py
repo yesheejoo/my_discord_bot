@@ -1039,7 +1039,6 @@ async def 가위바위보(ctx, 선택: str | None = None, 포인트: int | None 
     await ctx.send(embed=embed)
 
 # ──────────────────── 미니게임 2) 가위바위보 대결 (유저 vs 유저) ─────────────────
-# ───── 가위바위보 대결 시스템 ─────
 CHOICES = {"가위": 0, "바위": 1, "보": 2}
 
 @bot.command(name="가위바위보대결")
@@ -1064,7 +1063,7 @@ async def 가위바위보대결(ctx, 상대: discord.Member = None):
 
     await ctx.send("💰 배팅 금액을 입력해주세요 (예: `!배팅 50`) — 제한 시간 15초")
 
-    배팅액 = 10  # 기본값
+    배팅액 = 10
 
     def 배팅체크(m):
         return m.author == ctx.author and m.content.startswith("!배팅") and m.channel == ctx.channel
@@ -1122,13 +1121,18 @@ async def 가위바위보대결(ctx, 상대: discord.Member = None):
     diff = (CHOICES[a_pick] - CHOICES[b_pick]) % 3
     winner = None
     if diff == 0:
-        result_msg = "무승부! 포인트 변동 없음"
+        result_msg = "무승부! 포인트 반환"
+        data = read_data()
+        for user in (ctx.author, 상대):
+            uid = str(user.id)
+            data["user_points"][uid] = data["user_points"].get(uid, 0) + 배팅액
+        write_data(data)
     elif diff == 1:
-        winner = 상대
-        result_msg = f"🏆 {상대.display_name}님 승리! 배팅액 {배팅액 * 2}포인트를 전부 가져갑니다!"
-    else:
         winner = ctx.author
         result_msg = f"🏆 {ctx.author.display_name}님 승리! 배팅액 {배팅액 * 2}포인트를 전부 가져갑니다!"
+    else:
+        winner = 상대
+        result_msg = f"🏆 {상대.display_name}님 승리! 배팅액 {배팅액 * 2}포인트를 전부 가져갑니다!"
 
     if winner:
         uid = str(winner.id)
